@@ -46,7 +46,7 @@ from viewtron.events import (
 # === Outbound API client ===
 from viewtron.client import ViewtronCamera
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 __all__ = [
     # IPC v1.x
