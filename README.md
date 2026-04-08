@@ -81,7 +81,9 @@ with ViewtronCamera("192.168.0.20", "admin", "password") as cam:
 
 ## Documentation
 
-- [Viewtron API Developer Guide](https://github.com/mikehaldas/IP-Camera-API/blob/main/docs/viewtron-api-guide.md)
+- **[API Developer Docs](https://videos.cctvcamerapros.com/developer/)** — Full Viewtron API documentation portal
+- **[Python SDK Reference](https://videos.cctvcamerapros.com/developer/docs/getting-started/python-sdk/)** — Event classes, camera client, version routing
+- **[Home Assistant Integration](https://videos.cctvcamerapros.com/developer/docs/integrations/home-assistant/)** — Connect cameras to HA via MQTT
 - [XML Event Examples](https://github.com/mikehaldas/IP-Camera-API/tree/main/examples)
 - [IP Camera Setup Guide](https://videos.cctvcamerapros.com/support/topic/ip-camera-api-webbooks)
 - [NVR Setup Guide](https://videos.cctvcamerapros.com/support/topic/setup-nvr-api-webhooks)
