@@ -233,5 +233,11 @@ class ViewtronCamera:
         self._check_error(parsed, "DeleteLicensePlate")
         return True
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return False
+
     def __repr__(self):
         return f"ViewtronCamera({self.host})"

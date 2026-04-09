@@ -56,18 +56,16 @@ Version detection is automatic — IPC v1.x and NVR v2.0 use different XML struc
 from viewtron import ViewtronCamera
 
 camera = ViewtronCamera("192.168.0.20", "admin", "password")
-camera.login()
 
 # Device info
 info = camera.get_device_info()
 print(info["model"])  # "LPR-IP4"
 
-# Manage the license plate whitelist/blacklist
+# Manage the license plate database
 plates = camera.get_plates()
-camera.add_plate("ABC1234", owner="Mike", list_type="whiteList")
-camera.delete_plate(key_id=1775415327)
-
-camera.logout()
+camera.add_plate("ABC1234")
+camera.modify_plate("ABC1234", owner="Mike", telephone="555-1234")
+camera.delete_plate("ABC1234")
 
 # Or use as context manager
 with ViewtronCamera("192.168.0.20", "admin", "password") as cam:
