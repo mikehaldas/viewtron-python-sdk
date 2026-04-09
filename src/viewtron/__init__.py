@@ -43,6 +43,9 @@ from viewtron.events import (
     VT_alarm_types_v2,
 )
 
+# === Event factory ===
+from viewtron.events import ViewtronEvent
+
 # === Outbound API client ===
 from viewtron.client import ViewtronCamera
 
@@ -72,6 +75,8 @@ __all__ = [
     "TargetCountingByArea",
     "VideoMetadataV2",
     "VT_alarm_types_v2",
+    # Event factory
+    "ViewtronEvent",
     # Client
     "ViewtronCamera",
 ]

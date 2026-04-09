@@ -339,3 +339,145 @@ class TestViewtronCamera:
 
         cam = ViewtronCamera("192.168.0.1", "admin", "pass", port=8080)
         assert cam.base_url == "http://192.168.0.1:8080"
+
+
+# ====================== ViewtronEvent Factory ======================
+
+
+class TestViewtronEvent:
+    def test_lpr_ipc(self):
+        from viewtron import ViewtronEvent
+
+        event = ViewtronEvent(load_fixture("ipc-v1x", "lpr.xml"))
+        assert event is not None
+        assert event.category == "lpr"
+        assert event.get_alarm_type() == "VEHICE"
+        assert event.get_plate_number() == "ABC1234"
+        assert event.is_plate_authorized() is True
+
+    def test_lpr_nvr(self):
+        from viewtron import ViewtronEvent
+
+        event = ViewtronEvent(load_fixture("nvr-v2", "vehicle-lpr.xml"))
+        assert event is not None
+        assert event.category == "lpr"
+        assert event.get_alarm_type() == "vehicle"
+        assert event.get_plate_number() == "JP116D"
+        assert event.get_car_brand() == "GMC"
+
+    def test_intrusion_ipc(self):
+        from viewtron import ViewtronEvent
+
+        event = ViewtronEvent(load_fixture("ipc-v1x", "perimeter-intrusion.xml"))
+        assert event is not None
+        assert event.category == "intrusion"
+        assert event.get_alarm_type() == "PEA"
+
+    def test_intrusion_nvr(self):
+        from viewtron import ViewtronEvent
+
+        event = ViewtronEvent(load_fixture("nvr-v2", "region-intrusion.xml"))
+        assert event is not None
+        assert event.category == "intrusion"
+        assert event.get_alarm_type() == "regionIntrusion"
+
+    def test_face_ipc(self):
+        from viewtron import ViewtronEvent
+
+        event = ViewtronEvent(load_fixture("ipc-v1x", "face-detection.xml"))
+        assert event is not None
+        assert event.category == "face"
+        assert event.get_alarm_type() == "VFD"
+
+    def test_face_nvr(self):
+        from viewtron import ViewtronEvent
+
+        event = ViewtronEvent(load_fixture("nvr-v2", "face-detection.xml"))
+        assert event is not None
+        assert event.category == "face"
+        assert event.get_face_age() == "middleAged"
+        assert event.get_face_sex() == "male"
+
+    def test_line_crossing_nvr(self):
+        from viewtron import ViewtronEvent
+
+        event = ViewtronEvent(load_fixture("nvr-v2", "line-crossing.xml"))
+        assert event is not None
+        assert event.category == "intrusion"
+
+    def test_counting_by_line_nvr(self):
+        from viewtron import ViewtronEvent
+
+        event = ViewtronEvent(load_fixture("nvr-v2", "target-counting-by-line.xml"))
+        assert event is not None
+        assert event.category == "counting"
+
+    def test_counting_by_area_nvr(self):
+        from viewtron import ViewtronEvent
+
+        event = ViewtronEvent(load_fixture("nvr-v2", "target-counting-by-area.xml"))
+        assert event is not None
+        assert event.category == "counting"
+
+    def test_video_metadata_ipc(self):
+        from viewtron import ViewtronEvent
+
+        event = ViewtronEvent(load_fixture("ipc-v1x", "video-metadata.xml"))
+        assert event is not None
+        assert event.category == "metadata"
+
+    def test_video_metadata_nvr(self):
+        from viewtron import ViewtronEvent
+
+        event = ViewtronEvent(load_fixture("nvr-v2", "video-metadata.xml"))
+        assert event is not None
+        assert event.category == "metadata"
+
+    def test_zone_entry(self):
+        from viewtron import ViewtronEvent
+
+        event = ViewtronEvent(load_fixture("ipc-v1x", "zone-entry.xml"))
+        assert event is not None
+        assert event.category == "intrusion"
+
+    def test_zone_exit(self):
+        from viewtron import ViewtronEvent
+
+        event = ViewtronEvent(load_fixture("ipc-v1x", "zone-exit.xml"))
+        assert event is not None
+        assert event.category == "intrusion"
+
+    def test_keepalive_ipc_returns_none(self):
+        from viewtron import ViewtronEvent
+
+        event = ViewtronEvent(load_fixture("ipc-v1x", "keepalive.xml"))
+        assert event is None
+
+    def test_keepalive_nvr_returns_none(self):
+        from viewtron import ViewtronEvent
+
+        event = ViewtronEvent(load_fixture("nvr-v2", "keepalive.xml"))
+        assert event is None
+
+    def test_alarm_status_ipc_returns_none(self):
+        from viewtron import ViewtronEvent
+
+        event = ViewtronEvent(load_fixture("ipc-v1x", "alarm-status.xml"))
+        assert event is None
+
+    def test_alarm_status_nvr_returns_none(self):
+        from viewtron import ViewtronEvent
+
+        event = ViewtronEvent(load_fixture("nvr-v2", "alarm-status.xml"))
+        assert event is None
+
+    def test_empty_body_returns_none(self):
+        from viewtron import ViewtronEvent
+
+        assert ViewtronEvent("") is None
+        assert ViewtronEvent(None) is None
+
+    def test_non_xml_returns_none(self):
+        from viewtron import ViewtronEvent
+
+        assert ViewtronEvent("not xml at all") is None

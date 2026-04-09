@@ -665,3 +665,136 @@ class FaceDetectionV2(APIpostV2):
 
     def get_face_mask(self):
         return self.face_mask
+
+
+# ====================== EVENT FACTORY ======================
+# Single entry point for parsing any HTTP POST from a Viewtron camera or NVR.
+# Detects the API version and event type, returns the correct class instance.
+
+_IPC_CLASS_LOOKUP = {
+    'VEHICE': LPR,
+    'VEHICLE': LPR,
+    'VFD': FaceDetection,
+    'VFD_MATCH': FaceDetection,
+    'PEA': IntrusionDetection,
+    'AOIENTRY': IntrusionEntry,
+    'AOILEAVE': IntrusionExit,
+    'LOITER': LoiteringDetection,
+    'PVD': IllegalParking,
+    'VSD': VideoMetadata,
+    'PASSLINECOUNT': IntrusionDetection,
+    'TRAFFIC': IntrusionDetection,
+}
+
+_NVR_CLASS_LOOKUP = {
+    'vehicle': VehicleLPR,
+    'videoFaceDetect': FaceDetectionV2,
+    'regionIntrusion': RegionIntrusion,
+    'lineCrossing': LineCrossing,
+    'targetCountingByLine': TargetCountingByLine,
+    'targetCountingByArea': TargetCountingByArea,
+    'videoMetadata': VideoMetadataV2,
+}
+
+_CATEGORY_MAP_IPC = {
+    'VEHICE': 'lpr', 'VEHICLE': 'lpr',
+    'VFD': 'face', 'VFD_MATCH': 'face',
+    'PEA': 'intrusion',
+    'AOIENTRY': 'intrusion', 'AOILEAVE': 'intrusion',
+    'LOITER': 'intrusion',
+    'PVD': 'intrusion',
+    'VSD': 'metadata',
+    'PASSLINECOUNT': 'counting', 'TRAFFIC': 'counting',
+}
+
+_CATEGORY_MAP_NVR = {
+    'vehicle': 'lpr',
+    'videoFaceDetect': 'face',
+    'regionIntrusion': 'intrusion',
+    'lineCrossing': 'intrusion',
+    'targetCountingByLine': 'counting',
+    'targetCountingByArea': 'counting',
+    'videoMetadata': 'metadata',
+}
+
+
+def ViewtronEvent(post_body):
+    """Parse any HTTP POST body from a Viewtron camera or NVR.
+
+    Takes the raw XML string from the HTTP POST and returns the appropriate
+    event object (LPR, FaceDetection, IntrusionDetection, etc.).
+
+    Returns None for keepalives, alarm status messages, traject data,
+    and unrecognized event types.
+
+    Usage:
+        from viewtron import ViewtronEvent
+
+        event = ViewtronEvent(post_body)
+        if event is None:
+            return  # keepalive or unrecognized
+
+        print(event.category)              # "lpr", "intrusion", "face", etc.
+        print(event.get_alarm_type())      # "VEHICE", "PEA", "vehicle", etc.
+        print(event.get_alarm_description())
+    """
+    if not post_body or '<?xml' not in post_body:
+        return None
+
+    # Skip traject data (high-volume continuous tracking)
+    if '<traject type="list"' in post_body:
+        return None
+
+    # Skip alarm status on/off messages
+    if 'alarmStatusInfo' in post_body:
+        return None
+
+    try:
+        data = xmltodict.parse(post_body)
+    except Exception:
+        return None
+
+    config = data.get('config', {})
+    if not config:
+        return None
+
+    version = config.get('@version', '')
+
+    if version.startswith('2'):
+        # NVR v2.0 format
+        msg_type = str(config.get('messageType', ''))
+        if msg_type == 'keepalive':
+            return None
+        if msg_type != 'alarmData':
+            return None
+
+        smart_type = str(config.get('smartType', '')).strip()
+        event_class = _NVR_CLASS_LOOKUP.get(smart_type)
+        if event_class is None:
+            return None
+
+        event = event_class(post_body)
+        event.category = _CATEGORY_MAP_NVR.get(smart_type, 'other')
+        return event
+    else:
+        # IPC v1.x format
+        # Check for keepalive (deviceInfo only, no smartType)
+        st = config.get('smartType')
+        if st is None:
+            return None
+
+        if isinstance(st, dict):
+            alarm_type = (st.get('#text') or str(st)).strip()
+        else:
+            alarm_type = str(st).strip()
+
+        if not alarm_type:
+            return None
+
+        event_class = _IPC_CLASS_LOOKUP.get(alarm_type)
+        if event_class is None:
+            return None
+
+        event = event_class(post_body)
+        event.category = _CATEGORY_MAP_IPC.get(alarm_type, 'other')
+        return event
