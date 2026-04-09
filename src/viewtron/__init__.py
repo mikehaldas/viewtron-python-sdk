@@ -5,7 +5,7 @@ Parse inbound alarm events from Viewtron IP cameras and NVRs,
 and control cameras via the outbound API.
 
 Inbound events (camera sends HTTP POST to your server):
-    from viewtron import LPR, FaceDetection, IntrusionDetection, ...
+    from viewtron import ViewtronServer, ViewtronEvent
 
 Outbound API (your app sends commands to the camera):
     from viewtron import ViewtronCamera
@@ -14,43 +14,37 @@ Full documentation: https://github.com/mikehaldas/viewtron-python
 Product page: https://www.Viewtron.com
 """
 
-# === Inbound event classes (IPC v1.x) ===
-from viewtron.events import (
-    APIpost,
-    LPR,
-    FaceDetection,
-    IntrusionDetection,
-    IntrusionEntry,
-    IntrusionExit,
-    LoiteringDetection,
-    IllegalParking,
-    VideoMetadata,
-    CommonImagesLocation,
-    FaceDetectionImages,
-    VT_alarm_types,
-)
 
-# === Inbound event classes (NVR v2.0) ===
-from viewtron.events import (
-    APIpostV2,
-    VehicleLPR,
-    FaceDetectionV2,
-    RegionIntrusion,
-    LineCrossing,
-    TargetCountingByLine,
-    TargetCountingByArea,
-    VideoMetadataV2,
-    VT_alarm_types_v2,
-)
+def __getattr__(name):
+    """Lazy imports — only load modules when their classes are accessed."""
 
-# === Event factory ===
-from viewtron.events import ViewtronEvent
+    # Event classes and factory (events.py)
+    _events = {
+        "APIpost", "LPR", "FaceDetection", "IntrusionDetection",
+        "IntrusionEntry", "IntrusionExit", "LoiteringDetection",
+        "IllegalParking", "VideoMetadata", "CommonImagesLocation",
+        "FaceDetectionImages", "VT_alarm_types",
+        "APIpostV2", "VehicleLPR", "FaceDetectionV2", "RegionIntrusion",
+        "LineCrossing", "TargetCountingByLine", "TargetCountingByArea",
+        "VideoMetadataV2", "VT_alarm_types_v2",
+        "Traject", "ViewtronEvent",
+    }
+    if name in _events:
+        from viewtron import events
+        return getattr(events, name)
 
-# === Outbound API client ===
-from viewtron.client import ViewtronCamera
+    # Camera client (client.py)
+    if name == "ViewtronCamera":
+        from viewtron.client import ViewtronCamera
+        return ViewtronCamera
 
-# === Event server ===
-from viewtron.server import ViewtronServer
+    # Event server (server.py)
+    if name == "ViewtronServer":
+        from viewtron.server import ViewtronServer
+        return ViewtronServer
+
+    raise AttributeError(f"module 'viewtron' has no attribute {name!r}")
+
 
 __version__ = "1.2.0"
 
@@ -80,6 +74,8 @@ __all__ = [
     "VT_alarm_types_v2",
     # Event factory
     "ViewtronEvent",
+    # Traject
+    "Traject",
     # Client
     "ViewtronCamera",
     # Server

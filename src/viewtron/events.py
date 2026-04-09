@@ -667,6 +667,127 @@ class FaceDetectionV2(APIpostV2):
         return self.face_mask
 
 
+# ====================== TRAJECT (Smart Tracking) ======================
+# High-volume continuous tracking data sent by cameras with AI detection.
+# Each post contains one or more tracked targets with position, type, and velocity.
+
+class Traject:
+    """Parsed traject (smart tracking) event from a Viewtron camera.
+
+    Traject posts are high-volume — cameras send them multiple times per second
+    for each tracked target. Each post contains target ID, type (person/car/motor),
+    bounding box, velocity, and direction.
+
+    Attributes:
+        category: Always "traject"
+        targets: List of dicts with keys: target_id, target_type, rect, velocity, direction
+        device_name: Camera name from the post
+        mac: Camera MAC address
+        timestamp: Event timestamp
+    """
+
+    def __init__(self, post_body):
+        self.xml = str(post_body)
+        self.category = "traject"
+        self.targets = []
+        self.device_name = ""
+        self.mac = ""
+        self.time_stamp_formatted = ""
+        self.source = "IPC"
+
+        try:
+            data = xmltodict.parse(post_body)
+        except Exception:
+            return
+
+        config = data.get('config', {})
+        version = config.get('@version', '')
+
+        # Device info
+        if version.startswith('2'):
+            self.source = "NVR"
+            device_info = config.get('deviceInfo', {})
+            self.device_name = str(device_info.get('deviceName', '')).strip()
+            self.mac = str(device_info.get('mac', '')).strip()
+            ch = device_info.get('channelId', '')
+            if ch:
+                self.source = f"NVR-ch{ch}"
+        else:
+            device_name = config.get('deviceName', {})
+            if isinstance(device_name, dict):
+                self.device_name = (device_name.get('#text') or device_name.get('value') or '').strip()
+            else:
+                self.device_name = str(device_name).strip()
+            mac = config.get('mac', {})
+            if isinstance(mac, dict):
+                self.mac = (mac.get('#text') or mac.get('value') or '').strip()
+            else:
+                self.mac = str(mac).strip()
+
+        # Timestamp
+        current_time = config.get('currentTime', {})
+        time_text = current_time.get('#text', str(current_time)) if isinstance(current_time, dict) else str(current_time)
+        try:
+            time_val = int(time_text)
+            if time_val > 1_000_000_000_000_000:
+                time_val = time_val // 1_000_000
+            elif time_val > 1_000_000_000_000:
+                time_val = time_val // 1000
+            self.time_stamp_formatted = str(dt.fromtimestamp(time_val))
+        except:
+            self.time_stamp_formatted = str(dt.now())
+
+        # Parse traject items
+        traject_data = config.get('traject', {})
+        items = traject_data.get('item', []) if isinstance(traject_data, dict) else []
+        if not isinstance(items, list):
+            items = [items] if items else []
+
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+
+            def _text(val):
+                if isinstance(val, dict):
+                    return (val.get('#text') or val.get('value') or str(val)).strip()
+                return str(val).strip() if val else ''
+
+            tid = _text(item.get('targetId', ''))
+            ttype = _text(item.get('targetType', ''))
+
+            rect = item.get('rect', {})
+            x1 = _text(rect.get('x1', '0'))
+            y1 = _text(rect.get('y1', '0'))
+            x2 = _text(rect.get('x2', '0'))
+            y2 = _text(rect.get('y2', '0'))
+
+            velocity = _text(item.get('velocity', '0'))
+            direction = _text(item.get('direction', '0'))
+
+            self.targets.append({
+                'target_id': tid,
+                'target_type': ttype,
+                'rect': {'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2},
+                'velocity': velocity,
+                'direction': direction,
+            })
+
+    def get_alarm_type(self):
+        return "traject"
+
+    def get_alarm_description(self):
+        return "Smart Tracking"
+
+    def get_ip_cam(self):
+        return self.device_name
+
+    def get_time_stamp(self):
+        return str(int(dt.now().timestamp()))
+
+    def get_time_stamp_formatted(self):
+        return self.time_stamp_formatted
+
+
 # ====================== EVENT FACTORY ======================
 # Single entry point for parsing any HTTP POST from a Viewtron camera or NVR.
 # Detects the API version and event type, returns the correct class instance.
@@ -741,9 +862,10 @@ def ViewtronEvent(post_body):
     if not post_body or '<?xml' not in post_body:
         return None
 
-    # Skip traject data (high-volume continuous tracking)
+    # Traject data (high-volume continuous tracking)
     if '<traject type="list"' in post_body:
-        return None
+        event = Traject(post_body)
+        return event
 
     # Skip alarm status on/off messages
     if 'alarmStatusInfo' in post_body:

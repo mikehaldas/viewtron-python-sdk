@@ -69,8 +69,9 @@ class _ViewtronHandler(BaseHTTPRequestHandler):
         body = self.rfile.read(length)
         text = body.decode("utf-8", errors="replace")
 
-        # Pass raw XML to callback if configured
-        if self.server.on_raw:
+        # Pass raw XML to callback if configured (skip traject — high volume,
+        # delivered as parsed Traject events via on_event instead)
+        if self.server.on_raw and '<traject type="list"' not in text:
             self.server.on_raw(text, client_ip)
 
         # Parse with ViewtronEvent
