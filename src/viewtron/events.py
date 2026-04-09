@@ -1,11 +1,25 @@
 """
-Abstration layer for Viewtron IP camera API. Transforms XML from
-the HTTP Post from IP cameras to usable objects to build a Python server.
-Viewtron IP cameras have the ability to send an HTTP Post to an external server
-when an alarm event occurs. Alarm events include human detection, car detection,
-face detection / facial recognition, license plate detection / automatic license plate recogition.
-All of the server connection information is configured on the Viewtron IP camera.
-You can find Viewtron IP cameras at https://www.Viewtron.com
+Viewtron Event Parser — transforms camera HTTP POST XML into Python objects.
+
+Viewtron IP cameras send HTTP POST requests containing XML data when AI
+detection events occur (license plate recognition, intrusion detection,
+face detection, etc.). This module parses that XML into structured Python
+objects with a consistent interface.
+
+Most developers should use ``ViewtronEvent`` (the factory function) or
+``ViewtronServer`` rather than instantiating event classes directly.
+
+Example:
+    from viewtron import ViewtronEvent
+
+    event = ViewtronEvent(xml_body)
+    if event and event.category == "lpr":
+        print(event.get_plate_number())
+        print(event.is_plate_authorized())
+
+Written by Mike Haldas
+mike@cctvcamerapros.net
+https://www.Viewtron.com
 """
 import xmltodict
 from datetime import datetime as dt
@@ -34,6 +48,25 @@ VT_alarm_types = {
 }
 
 class APIpost:
+    """Base class for IPC v1.x camera events.
+
+    Parses common fields shared by all event types: device name, alarm type,
+    timestamp, and images. Subclasses add event-specific fields (plate number,
+    face attributes, etc.).
+
+    Attributes:
+        category (str): Event category set by ViewtronEvent — "lpr", "face",
+            "intrusion", "counting", "metadata", or "traject".
+        alarm_type (str): Raw alarm type from the camera XML (e.g., "VEHICE",
+            "VFD", "PEA").
+        alarm_description (str): Human-readable description (e.g.,
+            "License Plate Detection").
+        ip_cam (str): Camera device name.
+
+    Note:
+        Do not instantiate directly. Use ``ViewtronEvent(xml)`` instead.
+    """
+
     def __init__(self, post_body, json):
         self.xml = str(post_body)
         self.json = json
@@ -81,39 +114,94 @@ class APIpost:
         return self.alarm_types
 
     def get_alarm_description(self):
+        """Returns human-readable event description (e.g., "License Plate Detection")."""
         return self.alarm_description
 
     def get_target_types(self):
+        """Returns supported target types from the camera (person, car, motor)."""
         return self.target_types
 
     def get_time_stamp_formatted(self):
+        """Returns event timestamp as a formatted string.
+
+        Returns:
+            str: Timestamp like "2026-04-09 15:30:45".
+        """
         return str(self.time_stamp_formatted)
 
     def get_time_stamp(self):
+        """Returns current Unix timestamp as a string (used for filenames).
+
+        Returns:
+            str: Unix timestamp like "1775748316".
+        """
         return str(int(dt.now().timestamp()))
 
     def get_ip_cam(self):
+        """Returns the camera's device name.
+
+        Returns:
+            str: Device name (e.g., "Viewtron IPC").
+        """
         return self.ip_cam
 
     def get_alarm_type(self):
+        """Returns the raw alarm type code from the camera XML.
+
+        Returns:
+            str: Alarm type (e.g., "VEHICE", "VFD", "PEA", "vehicle").
+        """
         return self.alarm_type
 
     def get_plate_number(self):
+        """Returns the detected license plate number.
+
+        Returns:
+            str: Plate number (e.g., "ABC1234") or "<NO PLATE EXISTS>"
+                if this is not an LPR event.
+        """
         return getattr(self, 'plate_number', '<NO PLATE EXISTS>')
 
     def source_image_exists(self):
+        """Returns True if the event contains an overview/scene image.
+
+        Returns:
+            bool: True if a base64-encoded overview image is available.
+        """
         return getattr(self, 'has_source_image', False) and bool(getattr(self, 'source_image', ''))
 
     def target_image_exists(self):
+        """Returns True if the event contains a target crop image.
+
+        Returns:
+            bool: True if a base64-encoded target image is available
+                (plate crop for LPR, face crop for face detection).
+        """
         return getattr(self, 'has_target_image', False) and bool(getattr(self, 'target_image', ''))
 
     def images_exist(self):
+        """Returns True if the event contains any images.
+
+        Returns:
+            bool: True if either overview or target image is available.
+        """
         return self.source_image_exists() or self.target_image_exists()
 
     def get_source_image(self):
+        """Returns the overview/scene image as a base64-encoded string.
+
+        Returns:
+            str or None: Base64 JPEG data, or None if no image.
+        """
         return getattr(self, 'source_image', '') if self.source_image_exists() else None
 
     def get_target_image(self):
+        """Returns the target crop image as a base64-encoded string.
+
+        Returns:
+            str or None: Base64 JPEG data (plate crop, face crop, etc.),
+                or None if no image.
+        """
         return getattr(self, 'target_image', '') if self.target_image_exists() else None
 
     def dump_xml(self):
@@ -264,6 +352,24 @@ class VideoMetadata(APIpost):
 
 
 class LPR(APIpost):
+    """IPC v1.x License Plate Recognition event (smartType: VEHICE/VEHICLE).
+
+    Parses plate number, authorization status, and images from the camera's
+    HTTP POST XML.
+
+    Attributes:
+        plate_number (str): Detected plate text (e.g., "ABC1234").
+        vehicleListType (str or None): "whiteList", "blackList",
+            "temporaryList", or None if the plate is not in the database.
+
+    Example:
+        event = ViewtronEvent(xml_body)
+        if event.category == "lpr":
+            print(event.get_plate_number())     # "ABC1234"
+            print(event.is_plate_authorized())  # True
+            print(event.get_vehicle_list_type()) # "whiteList"
+    """
+
     def __init__(self, post_body):
         self.json = xmltodict.parse(post_body)
         config = self.json.get('config', {})
@@ -347,9 +453,20 @@ class LPR(APIpost):
         super().__init__(post_body, self.json)
 
     def get_vehicle_list_type(self):
+        """Returns the plate's database list type.
+
+        Returns:
+            str or None: "whiteList", "blackList", "temporaryList",
+                or None if the plate is not in the camera's database.
+        """
         return self.vehicleListType
 
     def is_plate_authorized(self):
+        """Returns True if the plate is on the camera's allow list.
+
+        Returns:
+            bool: True if vehicleListType is "whiteList", False otherwise.
+        """
         list_type = self.get_vehicle_list_type()
         if self.get_vehicle_list_type() == 'whiteList':
             return True
@@ -588,25 +705,60 @@ class VehicleLPR(APIpostV2):
                         self.has_target_image = bool(self.target_image)
 
     def get_plate_number(self):
+        """Returns the detected license plate number.
+
+        Returns:
+            str: Plate number (e.g., "ABC1234") or "<NO PLATE>".
+        """
         return self.plate_number
 
     def get_plate_color(self):
+        """Returns the detected plate color (e.g., "blue", "yellow").
+
+        Returns:
+            str: Plate color, or empty string if not detected.
+        """
         return self.plate_color
 
     def get_car_type(self):
+        """Returns the detected vehicle type (e.g., "sedan", "SUV", "truck").
+
+        Returns:
+            str: Vehicle type, or empty string if not detected.
+        """
         return self.car_type
 
     def get_car_color(self):
+        """Returns the detected vehicle color.
+
+        Returns:
+            str: Vehicle color, or empty string if not detected.
+        """
         return self.car_color
 
     def get_car_brand(self):
+        """Returns the detected vehicle brand (e.g., "Toyota", "Ford").
+
+        Returns:
+            str: Vehicle brand, or empty string if not detected.
+        """
         return self.car_brand
 
     def get_car_model(self):
+        """Returns the detected vehicle model.
+
+        Returns:
+            str: Vehicle model, or empty string if not detected.
+        """
         return self.car_model
 
     def is_plate_authorized(self):
-        return False  # NVR v2.0 does not include whiteList/blackList
+        """Always returns False — NVR v2.0 does not include allow/block list status.
+
+        Returns:
+            bool: Always False.
+        """
+        return False
 
 
 class FaceDetectionV2(APIpostV2):
@@ -655,15 +807,35 @@ class FaceDetectionV2(APIpostV2):
                         self.has_target_image = bool(self.target_image)
 
     def get_face_age(self):
+        """Returns estimated age of the detected face.
+
+        Returns:
+            str: Age estimate (e.g., "25"), or empty string.
+        """
         return self.face_age
 
     def get_face_sex(self):
+        """Returns estimated sex of the detected face.
+
+        Returns:
+            str: "male" or "female", or empty string.
+        """
         return self.face_sex
 
     def get_face_glasses(self):
+        """Returns whether the detected face is wearing glasses.
+
+        Returns:
+            str: "yes" or "no", or empty string.
+        """
         return self.face_glasses
 
     def get_face_mask(self):
+        """Returns whether the detected face is wearing a mask.
+
+        Returns:
+            str: "yes" or "no", or empty string.
+        """
         return self.face_mask
 
 
@@ -842,22 +1014,44 @@ _CATEGORY_MAP_NVR = {
 def ViewtronEvent(post_body):
     """Parse any HTTP POST body from a Viewtron camera or NVR.
 
-    Takes the raw XML string from the HTTP POST and returns the appropriate
-    event object (LPR, FaceDetection, IntrusionDetection, etc.).
+    Single entry point for the SDK. Takes the raw XML string from a camera's
+    HTTP POST, detects the API version and event type, and returns the
+    correct parsed event object.
 
-    Returns None for keepalives, alarm status messages, traject data,
-    and unrecognized event types.
+    Args:
+        post_body (str): Raw XML string from the camera's HTTP POST body.
 
-    Usage:
+    Returns:
+        Event object with a ``.category`` attribute, or None.
+
+        Possible categories and their event classes:
+
+        - ``"lpr"`` — LPR (v1.x) or VehicleLPR (v2.0). Plate number,
+          authorization status, vehicle attributes, images.
+        - ``"face"`` — FaceDetection (v1.x) or FaceDetectionV2 (v2.0).
+          Age, sex, glasses, mask attributes.
+        - ``"intrusion"`` — IntrusionDetection, IntrusionEntry,
+          IntrusionExit, RegionIntrusion, LineCrossing.
+        - ``"counting"`` — TargetCountingByLine, TargetCountingByArea.
+        - ``"metadata"`` — VideoMetadata (v1.x) or VideoMetadataV2 (v2.0).
+        - ``"traject"`` — Traject. High-volume tracking data with target
+          IDs, types, and bounding boxes.
+        - None — Keepalives, alarm status messages, unrecognized events.
+
+    Example:
         from viewtron import ViewtronEvent
 
-        event = ViewtronEvent(post_body)
+        event = ViewtronEvent(xml_body)
         if event is None:
             return  # keepalive or unrecognized
 
-        print(event.category)              # "lpr", "intrusion", "face", etc.
-        print(event.get_alarm_type())      # "VEHICE", "PEA", "vehicle", etc.
-        print(event.get_alarm_description())
+        print(event.category)               # "lpr"
+        print(event.get_alarm_type())       # "VEHICE"
+        print(event.get_alarm_description()) # "License Plate Detection"
+
+        if event.category == "lpr":
+            print(event.get_plate_number())      # "ABC1234"
+            print(event.is_plate_authorized())   # True
     """
     if not post_body or '<?xml' not in post_body:
         return None

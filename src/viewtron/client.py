@@ -1,12 +1,11 @@
 """
-Viewtron IP Camera API Client — control cameras and manage plate databases
-using Basic HTTP authentication.
+Viewtron Camera Client — send commands to cameras and manage plate databases.
 
-viewtron.py handles INBOUND events (camera sends HTTP POST to your server).
-viewtron_client.py handles OUTBOUND calls (your app sends commands to the camera).
+Uses Basic HTTP authentication to communicate with Viewtron IP cameras.
+Supports license plate CRUD operations and device info queries.
 
-Usage:
-    from viewtron_client import ViewtronCamera
+Example:
+    from viewtron import ViewtronCamera
 
     camera = ViewtronCamera("192.168.0.20", "admin", "password")
 
@@ -19,7 +18,9 @@ Usage:
     # Device info
     info = camera.get_device_info()
 
-You can find Viewtron IP cameras at https://www.Viewtron.com
+Written by Mike Haldas
+mike@cctvcamerapros.net
+https://www.Viewtron.com
 """
 
 import requests
@@ -28,7 +29,25 @@ import re
 
 
 class ViewtronCamera:
-    """Client for Viewtron IP camera API with Basic HTTP authentication."""
+    """Client for Viewtron IP camera API with Basic HTTP authentication.
+
+    Sends commands to the camera over HTTP. Currently supports license plate
+    database management (CRUD) and device info queries.
+
+    Args:
+        host (str): Camera IP address (e.g., "192.168.0.20").
+        username (str): Camera admin username.
+        password (str): Camera admin password.
+        port (int): HTTP port (default 80).
+
+    Example:
+        from viewtron import ViewtronCamera
+
+        camera = ViewtronCamera("192.168.0.20", "admin", "password")
+        plates = camera.get_plates()
+        for plate in plates:
+            print(plate["plate_number"], plate["owner"])
+    """
 
     CONFIG_WRAPPER = '<?xml version="1.0" encoding="UTF-8"?><config version="2.1.0" xmlns="http://www.ipc.com/ver10">{body}</config>'
 
