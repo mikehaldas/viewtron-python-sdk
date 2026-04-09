@@ -15,32 +15,33 @@ pip install viewtron
 Viewtron cameras and NVRs send XML alarm events via HTTP POST. This SDK parses them into Python objects.
 
 ```python
-from viewtron import LPR, FaceDetection, IntrusionDetection
+from viewtron import ViewtronServer
 
-# In your HTTP server's POST handler:
-lpr_event = LPR(request_body)
-print(lpr_event.get_plate_number())       # "ABC1234"
-print(lpr_event.is_plate_authorized())    # True (plate is on camera whitelist)
+def on_event(event, client_ip):
+    if event.category == "lpr":
+        print(event.get_plate_number())       # "ABC1234"
+        print(event.get_plate_group())        # "whiteList" or NVR group name
 
-# Images are included as base64
-if lpr_event.source_image_exists():
-    overview = lpr_event.get_source_image()   # base64 JPEG — full scene
-if lpr_event.target_image_exists():
-    plate_crop = lpr_event.get_target_image() # base64 JPEG — plate closeup
+        # Images as decoded JPEG bytes — ready for saving, MQTT, notifications
+        overview = event.get_source_image_bytes()   # full scene
+        plate_crop = event.get_target_image_bytes() # plate closeup
+
+server = ViewtronServer(port=5050, on_event=on_event)
+server.serve_forever()
 ```
 
 ### Supported Event Types
 
 | Source | Class | Detection |
 |--------|-------|-----------|
-| IPC v1.x | `LPR` | License plate recognition with whitelist/blacklist |
+| IPC v1.x | `LPR` | License plate recognition with plate groups |
 | IPC v1.x | `FaceDetection` | Face detection with crop image |
 | IPC v1.x | `IntrusionDetection` | Perimeter intrusion (person/vehicle) |
 | IPC v1.x | `IntrusionEntry` | Zone entry |
 | IPC v1.x | `IntrusionExit` | Zone exit |
 | IPC v1.x | `LoiteringDetection` | Loitering |
 | IPC v1.x | `VideoMetadata` | Continuous object detection |
-| NVR v2.0 | `VehicleLPR` | LPR with vehicle brand/color/type |
+| NVR v2.0 | `VehicleLPR` | LPR with vehicle brand/color/type and plate groups |
 | NVR v2.0 | `FaceDetectionV2` | Face detection with age/sex/glasses/mask |
 | NVR v2.0 | `RegionIntrusion` | Perimeter intrusion |
 | NVR v2.0 | `LineCrossing` | Tripwire line crossing |

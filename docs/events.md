@@ -18,8 +18,7 @@
     * [get\_target\_image\_bytes](#viewtron.events.APIpost.get_target_image_bytes)
   * [FaceDetectionImages](#viewtron.events.FaceDetectionImages)
   * [LPR](#viewtron.events.LPR)
-    * [get\_vehicle\_list\_type](#viewtron.events.LPR.get_vehicle_list_type)
-    * [is\_plate\_authorized](#viewtron.events.LPR.is_plate_authorized)
+    * [get\_plate\_group](#viewtron.events.LPR.get_plate_group)
   * [APIpostV2](#viewtron.events.APIpostV2)
     * [get\_source\_image\_bytes](#viewtron.events.APIpostV2.get_source_image_bytes)
     * [get\_target\_image\_bytes](#viewtron.events.APIpostV2.get_target_image_bytes)
@@ -30,8 +29,7 @@
     * [get\_car\_color](#viewtron.events.VehicleLPR.get_car_color)
     * [get\_car\_brand](#viewtron.events.VehicleLPR.get_car_brand)
     * [get\_car\_model](#viewtron.events.VehicleLPR.get_car_model)
-    * [is\_plate\_authorized](#viewtron.events.VehicleLPR.is_plate_authorized)
-    * [get\_group\_name](#viewtron.events.VehicleLPR.get_group_name)
+    * [get\_plate\_group](#viewtron.events.VehicleLPR.get_plate_group)
     * [get\_car\_owner](#viewtron.events.VehicleLPR.get_car_owner)
   * [FaceDetectionV2](#viewtron.events.FaceDetectionV2)
     * [get\_face\_age](#viewtron.events.FaceDetectionV2.get_face_age)
@@ -62,7 +60,7 @@ Most developers should use ``ViewtronEvent`` (the factory function) or
   event = ViewtronEvent(xml_body)
   if event and event.category == "lpr":
   print(event.get_plate_number())
-  print(event.is_plate_authorized())
+  print(event.get_plate_group())
   
   Written by Mike Haldas
   mike@cctvcamerapros.net
@@ -331,38 +329,33 @@ HTTP POST XML.
 
   event = ViewtronEvent(xml_body)
   if event.category == "lpr":
-  print(event.get_plate_number())     # "ABC1234"
-  print(event.is_plate_authorized())  # True
-  print(event.get_vehicle_list_type()) # "whiteList"
+  print(event.get_plate_number())  # "ABC1234"
+  print(event.get_plate_group())   # "whiteList"
 
-<a id="viewtron.events.LPR.get_vehicle_list_type"></a>
+<a id="viewtron.events.LPR.get_plate_group"></a>
 
-#### get\_vehicle\_list\_type
+#### get\_plate\_group
 
 ```python
-def get_vehicle_list_type()
+def get_plate_group()
 ```
 
-Returns the plate's database list type.
+Returns the plate's database group from the IPC camera.
+
+The IPC camera uses fixed group names in the XML vehicleListType field.
+The application decides what each group means.
 
 **Returns**:
 
-  str or None: "whiteList", "blackList", "temporaryList",
-  or None if the plate is not in the camera's database.
-
-<a id="viewtron.events.LPR.is_plate_authorized"></a>
-
-#### is\_plate\_authorized
-
-```python
-def is_plate_authorized()
-```
-
-Returns True if the plate is on the camera's allow list.
-
-**Returns**:
-
-- `bool` - True if vehicleListType is "whiteList", False otherwise.
+- `str` - Plate group — "whiteList", "blackList", "temporaryList",
+  or empty string if the plate is not in the camera's database.
+  
+  IPC camera group values (raw XML values, not UI labels):
+  - "whiteList" — camera UI shows this as "Allow list"
+  - "blackList" — camera UI shows this as "Block list"
+  - "temporaryList" — camera UI shows this as "Temporary vehicle"
+  - "" (empty) — plate is not in the database, or temporary plate
+  with an expired date range
 
 <a id="viewtron.events.APIpostV2"></a>
 
@@ -511,40 +504,24 @@ Returns the detected vehicle model.
 
 - `str` - Vehicle model, or empty string if not detected.
 
-<a id="viewtron.events.VehicleLPR.is_plate_authorized"></a>
+<a id="viewtron.events.VehicleLPR.get_plate_group"></a>
 
-#### is\_plate\_authorized
+#### get\_plate\_group
 
 ```python
-def is_plate_authorized()
+def get_plate_group()
 ```
 
-Returns True if the plate is in any NVR plate group.
+Returns the plate's database group from the NVR.
 
-Unlike IPC cameras which have fixed whiteList/blackList categories,
-NVR plate groups are user-defined. This method returns True if the
-plate matched any group. Use ``get_group_name()`` to see which group.
+NVR plate groups are user-defined — you create groups and name them
+whatever you want (e.g., "Whitelist", "Residents", "Banned").
+The application decides what each group means.
 
 **Returns**:
 
-- `bool` - True if the plate is in the NVR database, False if unknown.
-
-<a id="viewtron.events.VehicleLPR.get_group_name"></a>
-
-#### get\_group\_name
-
-```python
-def get_group_name()
-```
-
-Returns the NVR plate group name the plate belongs to.
-
-NVR plate groups are user-defined (e.g., "Whitelist", "Residents",
-"Delivery"). Returns empty string if the plate is not in the database.
-
-**Returns**:
-
-- `str` - Group name, or empty string if plate is not in any group.
+- `str` - Group name, or empty string if the plate is not in the
+  NVR database.
 
 <a id="viewtron.events.VehicleLPR.get_car_owner"></a>
 
@@ -704,5 +681,5 @@ correct parsed event object.
   
   if event.category == "lpr":
   print(event.get_plate_number())      # "ABC1234"
-  print(event.is_plate_authorized())   # True
+  print(event.get_plate_group())       # "whiteList"
 

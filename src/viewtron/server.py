@@ -12,7 +12,7 @@ Usage:
         print(f"[{event.category}] {event.get_alarm_type()} from {client_ip}")
         if event.category == "lpr":
             print(f"  Plate: {event.get_plate_number()}")
-            print(f"  Authorized: {event.is_plate_authorized()}")
+            print(f"  Group: {event.get_plate_group()}")
 
     server = ViewtronServer(port=5050, on_event=on_event)
     server.serve_forever()
@@ -122,8 +122,8 @@ class ViewtronServer:
         def on_event(event, client_ip):
             if event.category == "lpr":
                 plate = event.get_plate_number()
-                authorized = event.is_plate_authorized()
-                print(f"Plate {plate} - Authorized: {authorized}")
+                group = event.get_plate_group()
+                print(f"Plate {plate} - Group: {group}")
 
         server = ViewtronServer(port=5050, on_event=on_event)
         server.serve_forever()

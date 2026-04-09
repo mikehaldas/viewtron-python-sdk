@@ -15,7 +15,7 @@ Example:
     event = ViewtronEvent(xml_body)
     if event and event.category == "lpr":
         print(event.get_plate_number())
-        print(event.is_plate_authorized())
+        print(event.get_plate_group())
 
 Written by Mike Haldas
 mike@cctvcamerapros.net
@@ -399,9 +399,8 @@ class LPR(APIpost):
     Example:
         event = ViewtronEvent(xml_body)
         if event.category == "lpr":
-            print(event.get_plate_number())     # "ABC1234"
-            print(event.is_plate_authorized())  # True
-            print(event.get_vehicle_list_type()) # "whiteList"
+            print(event.get_plate_number())  # "ABC1234"
+            print(event.get_plate_group())   # "whiteList"
     """
 
     def __init__(self, post_body):
@@ -486,27 +485,24 @@ class LPR(APIpost):
 
         super().__init__(post_body, self.json)
 
-    def get_vehicle_list_type(self):
-        """Returns the plate's database list type.
+    def get_plate_group(self):
+        """Returns the plate's database group from the IPC camera.
+
+        The IPC camera uses fixed group names in the XML vehicleListType field.
+        The application decides what each group means.
 
         Returns:
-            str or None: "whiteList", "blackList", "temporaryList",
-                or None if the plate is not in the camera's database.
-        """
-        return self.vehicleListType
+            str: Plate group — "whiteList", "blackList", "temporaryList",
+                or empty string if the plate is not in the camera's database.
 
-    def is_plate_authorized(self):
-        """Returns True if the plate is on the camera's allow list.
-
-        Returns:
-            bool: True if vehicleListType is "whiteList", False otherwise.
+        IPC camera group values (raw XML values, not UI labels):
+            - "whiteList" — camera UI shows this as "Allow list"
+            - "blackList" — camera UI shows this as "Block list"
+            - "temporaryList" — camera UI shows this as "Temporary vehicle"
+            - "" (empty) — plate is not in the database, or temporary plate
+              with an expired date range
         """
-        list_type = self.get_vehicle_list_type()
-        if self.get_vehicle_list_type() == 'whiteList':
-            return True
-        if self.get_vehicle_list_type() == 'blackList':
-            return False
-        return False
+        return self.vehicleListType or ""
 
 
 # ====================== NVR v2.0 FORMAT ======================
@@ -622,8 +618,8 @@ class APIpostV2:
     def get_plate_number(self):
         return '<NO PLATE EXISTS>'
 
-    def is_plate_authorized(self):
-        return False
+    def get_plate_group(self):
+        return ""
 
     def source_image_exists(self):
         return self.has_source_image and bool(self.source_image)
@@ -830,26 +826,16 @@ class VehicleLPR(APIpostV2):
         """
         return self.car_model
 
-    def is_plate_authorized(self):
-        """Returns True if the plate is in any NVR plate group.
+    def get_plate_group(self):
+        """Returns the plate's database group from the NVR.
 
-        Unlike IPC cameras which have fixed whiteList/blackList categories,
-        NVR plate groups are user-defined. This method returns True if the
-        plate matched any group. Use ``get_group_name()`` to see which group.
-
-        Returns:
-            bool: True if the plate is in the NVR database, False if unknown.
-        """
-        return bool(self.group_name)
-
-    def get_group_name(self):
-        """Returns the NVR plate group name the plate belongs to.
-
-        NVR plate groups are user-defined (e.g., "Whitelist", "Residents",
-        "Delivery"). Returns empty string if the plate is not in the database.
+        NVR plate groups are user-defined — you create groups and name them
+        whatever you want (e.g., "Whitelist", "Residents", "Banned").
+        The application decides what each group means.
 
         Returns:
-            str: Group name, or empty string if plate is not in any group.
+            str: Group name, or empty string if the plate is not in the
+                NVR database.
         """
         return self.group_name
 
@@ -1152,7 +1138,7 @@ def ViewtronEvent(post_body):
 
         if event.category == "lpr":
             print(event.get_plate_number())      # "ABC1234"
-            print(event.is_plate_authorized())   # True
+            print(event.get_plate_group())       # "whiteList"
     """
     if not post_body or '<?xml' not in post_body:
         return None

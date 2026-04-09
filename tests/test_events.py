@@ -57,11 +57,8 @@ class TestLPR:
     def test_plate_number(self, event):
         assert event.get_plate_number() == "ABC1234"
 
-    def test_plate_authorized(self, event):
-        assert event.is_plate_authorized() is True
-
-    def test_vehicle_list_type(self, event):
-        assert event.get_vehicle_list_type() == "whiteList"
+    def test_plate_group(self, event):
+        assert event.get_plate_group() == "whiteList"
 
     def test_timestamp(self, event):
         ts = event.get_time_stamp_formatted()
@@ -353,7 +350,7 @@ class TestViewtronEvent:
         assert event.category == "lpr"
         assert event.get_alarm_type() == "VEHICE"
         assert event.get_plate_number() == "ABC1234"
-        assert event.is_plate_authorized() is True
+        assert event.get_plate_group() == "whiteList"
 
     def test_lpr_nvr(self):
         from viewtron import ViewtronEvent
