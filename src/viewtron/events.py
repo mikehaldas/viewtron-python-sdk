@@ -204,6 +204,40 @@ class APIpost:
         """
         return getattr(self, 'target_image', '') if self.target_image_exists() else None
 
+    def get_source_image_bytes(self):
+        """Returns the overview/scene image as decoded JPEG bytes.
+
+        Ready to save to disk, publish to MQTT, or include in notifications.
+
+        Returns:
+            bytes or None: JPEG image data, or None if no image.
+        """
+        data = self.get_source_image()
+        if data:
+            try:
+                return base64.b64decode(data)
+            except Exception:
+                return None
+        return None
+
+    def get_target_image_bytes(self):
+        """Returns the target crop image as decoded JPEG bytes.
+
+        Ready to save to disk, publish to MQTT, or include in notifications.
+        For LPR events this is the plate crop, for face detection it's the
+        face crop.
+
+        Returns:
+            bytes or None: JPEG image data, or None if no image.
+        """
+        data = self.get_target_image()
+        if data:
+            try:
+                return base64.b64decode(data)
+            except Exception:
+                return None
+        return None
+
     def dump_xml(self):
         print(self.xml)
 
@@ -605,6 +639,34 @@ class APIpostV2:
 
     def get_target_image(self):
         return self.target_image if self.target_image_exists() else None
+
+    def get_source_image_bytes(self):
+        """Returns the overview/scene image as decoded JPEG bytes.
+
+        Returns:
+            bytes or None: JPEG image data, or None if no image.
+        """
+        data = self.get_source_image()
+        if data:
+            try:
+                return base64.b64decode(data)
+            except Exception:
+                return None
+        return None
+
+    def get_target_image_bytes(self):
+        """Returns the target crop image as decoded JPEG bytes.
+
+        Returns:
+            bytes or None: JPEG image data, or None if no image.
+        """
+        data = self.get_target_image()
+        if data:
+            try:
+                return base64.b64decode(data)
+            except Exception:
+                return None
+        return None
 
     def get_channel_id(self):
         return self.channel_id

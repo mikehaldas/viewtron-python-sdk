@@ -46,7 +46,7 @@ def __getattr__(name):
     raise AttributeError(f"module 'viewtron' has no attribute {name!r}")
 
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 __all__ = [
     # IPC v1.x
