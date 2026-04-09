@@ -49,6 +49,9 @@ from viewtron.events import ViewtronEvent
 # === Outbound API client ===
 from viewtron.client import ViewtronCamera
 
+# === Event server ===
+from viewtron.server import ViewtronServer
+
 __version__ = "1.2.0"
 
 __all__ = [
@@ -79,4 +82,6 @@ __all__ = [
     "ViewtronEvent",
     # Client
     "ViewtronCamera",
+    # Server
+    "ViewtronServer",
 ]
