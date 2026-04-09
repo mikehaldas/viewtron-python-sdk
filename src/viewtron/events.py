@@ -715,7 +715,15 @@ class VehicleLPR(APIpostV2):
     - licensePlateListInfo instead of eventInfo + targetListInfo
     - Plate number in licensePlateAttribute/licensePlateNumber
     - Vehicle attributes: carType, color, brand, model
+    - Plate database match in licensePlateMatchInfo (groupName, carOwner, etc.)
     - Target image is a plate crop inside licensePlateListInfo/item/targetImageData
+
+    Attributes:
+        group_name (str): NVR plate group name (e.g., "Whitelist", "Residents").
+            Empty string if the plate is not in the NVR database.
+            NVR groups are user-defined — unlike IPC cameras which use fixed
+            whiteList/blackList/temporaryList values.
+        car_owner (str): Owner name from the NVR plate database.
     """
     def __init__(self, post_body):
         json = xmltodict.parse(post_body)
@@ -728,6 +736,8 @@ class VehicleLPR(APIpostV2):
         self.car_color = ''
         self.car_brand = ''
         self.car_model = ''
+        self.group_name = ''
+        self.car_owner = ''
 
         # Parse licensePlateListInfo
         plate_list = config.get('licensePlateListInfo', {})
@@ -752,6 +762,12 @@ class VehicleLPR(APIpostV2):
                     self.car_color = str(car_attr.get('color', '')).strip()
                     self.car_brand = str(car_attr.get('brand', '')).strip()
                     self.car_model = str(car_attr.get('model', '')).strip()
+
+                # Plate database match (NVR user-defined groups)
+                match_info = first_item.get('licensePlateMatchInfo', {})
+                if match_info:
+                    self.group_name = str(match_info.get('groupName', '')).strip()
+                    self.car_owner = str(match_info.get('carOwner', '')).strip()
 
                 # Plate crop image (inside licensePlateListInfo, not targetListInfo)
                 target_data = first_item.get('targetImageData', {})
@@ -815,12 +831,35 @@ class VehicleLPR(APIpostV2):
         return self.car_model
 
     def is_plate_authorized(self):
-        """Always returns False — NVR v2.0 does not include allow/block list status.
+        """Returns True if the plate is in any NVR plate group.
+
+        Unlike IPC cameras which have fixed whiteList/blackList categories,
+        NVR plate groups are user-defined. This method returns True if the
+        plate matched any group. Use ``get_group_name()`` to see which group.
 
         Returns:
-            bool: Always False.
+            bool: True if the plate is in the NVR database, False if unknown.
         """
-        return False
+        return bool(self.group_name)
+
+    def get_group_name(self):
+        """Returns the NVR plate group name the plate belongs to.
+
+        NVR plate groups are user-defined (e.g., "Whitelist", "Residents",
+        "Delivery"). Returns empty string if the plate is not in the database.
+
+        Returns:
+            str: Group name, or empty string if plate is not in any group.
+        """
+        return self.group_name
+
+    def get_car_owner(self):
+        """Returns the owner name from the NVR plate database.
+
+        Returns:
+            str: Owner name, or empty string if not set.
+        """
+        return self.car_owner
 
 
 class FaceDetectionV2(APIpostV2):

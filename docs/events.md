@@ -14,11 +14,15 @@
     * [images\_exist](#viewtron.events.APIpost.images_exist)
     * [get\_source\_image](#viewtron.events.APIpost.get_source_image)
     * [get\_target\_image](#viewtron.events.APIpost.get_target_image)
+    * [get\_source\_image\_bytes](#viewtron.events.APIpost.get_source_image_bytes)
+    * [get\_target\_image\_bytes](#viewtron.events.APIpost.get_target_image_bytes)
   * [FaceDetectionImages](#viewtron.events.FaceDetectionImages)
   * [LPR](#viewtron.events.LPR)
     * [get\_vehicle\_list\_type](#viewtron.events.LPR.get_vehicle_list_type)
     * [is\_plate\_authorized](#viewtron.events.LPR.is_plate_authorized)
   * [APIpostV2](#viewtron.events.APIpostV2)
+    * [get\_source\_image\_bytes](#viewtron.events.APIpostV2.get_source_image_bytes)
+    * [get\_target\_image\_bytes](#viewtron.events.APIpostV2.get_target_image_bytes)
   * [VehicleLPR](#viewtron.events.VehicleLPR)
     * [get\_plate\_number](#viewtron.events.VehicleLPR.get_plate_number)
     * [get\_plate\_color](#viewtron.events.VehicleLPR.get_plate_color)
@@ -27,6 +31,8 @@
     * [get\_car\_brand](#viewtron.events.VehicleLPR.get_car_brand)
     * [get\_car\_model](#viewtron.events.VehicleLPR.get_car_model)
     * [is\_plate\_authorized](#viewtron.events.VehicleLPR.is_plate_authorized)
+    * [get\_group\_name](#viewtron.events.VehicleLPR.get_group_name)
+    * [get\_car\_owner](#viewtron.events.VehicleLPR.get_car_owner)
   * [FaceDetectionV2](#viewtron.events.FaceDetectionV2)
     * [get\_face\_age](#viewtron.events.FaceDetectionV2.get_face_age)
     * [get\_face\_sex](#viewtron.events.FaceDetectionV2.get_face_sex)
@@ -254,6 +260,40 @@ Returns the target crop image as a base64-encoded string.
   str or None: Base64 JPEG data (plate crop, face crop, etc.),
   or None if no image.
 
+<a id="viewtron.events.APIpost.get_source_image_bytes"></a>
+
+#### get\_source\_image\_bytes
+
+```python
+def get_source_image_bytes()
+```
+
+Returns the overview/scene image as decoded JPEG bytes.
+
+Ready to save to disk, publish to MQTT, or include in notifications.
+
+**Returns**:
+
+  bytes or None: JPEG image data, or None if no image.
+
+<a id="viewtron.events.APIpost.get_target_image_bytes"></a>
+
+#### get\_target\_image\_bytes
+
+```python
+def get_target_image_bytes()
+```
+
+Returns the target crop image as decoded JPEG bytes.
+
+Ready to save to disk, publish to MQTT, or include in notifications.
+For LPR events this is the plate crop, for face detection it's the
+face crop.
+
+**Returns**:
+
+  bytes or None: JPEG image data, or None if no image.
+
 <a id="viewtron.events.FaceDetectionImages"></a>
 
 ## FaceDetectionImages Objects
@@ -334,6 +374,34 @@ class APIpostV2()
 
 Base class for NVR v2.0 HTTP Posts.
 
+<a id="viewtron.events.APIpostV2.get_source_image_bytes"></a>
+
+#### get\_source\_image\_bytes
+
+```python
+def get_source_image_bytes()
+```
+
+Returns the overview/scene image as decoded JPEG bytes.
+
+**Returns**:
+
+  bytes or None: JPEG image data, or None if no image.
+
+<a id="viewtron.events.APIpostV2.get_target_image_bytes"></a>
+
+#### get\_target\_image\_bytes
+
+```python
+def get_target_image_bytes()
+```
+
+Returns the target crop image as decoded JPEG bytes.
+
+**Returns**:
+
+  bytes or None: JPEG image data, or None if no image.
+
 <a id="viewtron.events.VehicleLPR"></a>
 
 ## VehicleLPR Objects
@@ -348,7 +416,16 @@ Uses a completely different XML structure from other v2.0 alarm types:
 - licensePlateListInfo instead of eventInfo + targetListInfo
 - Plate number in licensePlateAttribute/licensePlateNumber
 - Vehicle attributes: carType, color, brand, model
+- Plate database match in licensePlateMatchInfo (groupName, carOwner, etc.)
 - Target image is a plate crop inside licensePlateListInfo/item/targetImageData
+
+**Attributes**:
+
+- `group_name` _str_ - NVR plate group name (e.g., "Whitelist", "Residents").
+  Empty string if the plate is not in the NVR database.
+  NVR groups are user-defined — unlike IPC cameras which use fixed
+  whiteList/blackList/temporaryList values.
+- `car_owner` _str_ - Owner name from the NVR plate database.
 
 <a id="viewtron.events.VehicleLPR.get_plate_number"></a>
 
@@ -442,11 +519,46 @@ Returns the detected vehicle model.
 def is_plate_authorized()
 ```
 
-Always returns False — NVR v2.0 does not include allow/block list status.
+Returns True if the plate is in any NVR plate group.
+
+Unlike IPC cameras which have fixed whiteList/blackList categories,
+NVR plate groups are user-defined. This method returns True if the
+plate matched any group. Use ``get_group_name()`` to see which group.
 
 **Returns**:
 
-- `bool` - Always False.
+- `bool` - True if the plate is in the NVR database, False if unknown.
+
+<a id="viewtron.events.VehicleLPR.get_group_name"></a>
+
+#### get\_group\_name
+
+```python
+def get_group_name()
+```
+
+Returns the NVR plate group name the plate belongs to.
+
+NVR plate groups are user-defined (e.g., "Whitelist", "Residents",
+"Delivery"). Returns empty string if the plate is not in the database.
+
+**Returns**:
+
+- `str` - Group name, or empty string if plate is not in any group.
+
+<a id="viewtron.events.VehicleLPR.get_car_owner"></a>
+
+#### get\_car\_owner
+
+```python
+def get_car_owner()
+```
+
+Returns the owner name from the NVR plate database.
+
+**Returns**:
+
+- `str` - Owner name, or empty string if not set.
 
 <a id="viewtron.events.FaceDetectionV2"></a>
 
