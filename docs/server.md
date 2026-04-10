@@ -29,9 +29,6 @@ Usage:
 
 You can find Viewtron IP cameras at https://www.Viewtron.com
 
-Written by Mike Haldas
-mike@cctvcamerapros.net
-
 <a id="viewtron.server.ViewtronServer"></a>
 
 ## ViewtronServer Objects

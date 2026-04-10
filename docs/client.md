@@ -32,10 +32,6 @@ Supports license plate CRUD operations and device info queries.
   
   # Device info
   info = camera.get_device_info()
-  
-  Written by Mike Haldas
-  mike@cctvcamerapros.net
-  https://www.Viewtron.com
 
 <a id="viewtron.client.ViewtronCamera"></a>
 

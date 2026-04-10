@@ -62,9 +62,7 @@ Most developers should use ``ViewtronEvent`` (the factory function) or
   print(event.get_plate_number())
   print(event.get_plate_group())
   
-  Written by Mike Haldas
-  mike@cctvcamerapros.net
-  https://www.Viewtron.com
+  You can find Viewtron IP cameras at https://www.Viewtron.com
 
 <a id="viewtron.events.APIpost"></a>
 
