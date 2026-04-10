@@ -17,10 +17,9 @@ Example:
         print(event.get_plate_number())
         print(event.get_plate_group())
 
-Written by Mike Haldas
-mike@cctvcamerapros.net
-https://www.Viewtron.com
+You can find Viewtron IP cameras at https://www.Viewtron.com
 """
+# Written by Mike Haldas — mike@cctvcamerapros.net
 import xmltodict
 from datetime import datetime as dt
 import base64

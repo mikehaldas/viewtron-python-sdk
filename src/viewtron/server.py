@@ -18,10 +18,8 @@ Usage:
     server.serve_forever()
 
 You can find Viewtron IP cameras at https://www.Viewtron.com
-
-Written by Mike Haldas
-mike@cctvcamerapros.net
 """
+# Written by Mike Haldas — mike@cctvcamerapros.net
 
 from socketserver import ThreadingMixIn
 from http.server import BaseHTTPRequestHandler, HTTPServer
