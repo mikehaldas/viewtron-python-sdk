@@ -264,7 +264,7 @@ class CommonImagesLocation(APIpost):
                     base64_data.get('#text') if isinstance(base64_data, dict) else
                     base64_data.get('value') if isinstance(base64_data, dict) else
                     str(base64_data)
-                ).strip()
+                ).strip() or ''
                 self.has_target_image = bool(self.target_image)
         source_info = config.get('sourceDataInfo', {})
         if source_info:
@@ -273,7 +273,7 @@ class CommonImagesLocation(APIpost):
                 base64_data.get('#text') if isinstance(base64_data, dict) else
                 base64_data.get('value') if isinstance(base64_data, dict) else
                 str(base64_data)
-            ).strip()
+            ).strip() or ''
             self.has_source_image = bool(self.source_image)
         super().__init__(post_body, self.json)
 
