@@ -72,8 +72,14 @@ class _ViewtronHandler(BaseHTTPRequestHandler):
         if self.server.on_raw and '<traject type="list"' not in text:
             self.server.on_raw(text, client_ip)
 
-        # Parse with ViewtronEvent
-        event = ViewtronEvent(text)
+        # Parse with ViewtronEvent. A malformed post should not take down
+        # the handler or the camera's persistent connection.
+        try:
+            event = ViewtronEvent(text)
+        except Exception as e:
+            print(f"[{dt.now()}] Could not parse event from {client_ip}: "
+                  f"{type(e).__name__}: {e}")
+            return
         if event is None:
             return
 

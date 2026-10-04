@@ -46,6 +46,21 @@ VT_alarm_types = {
     'PVD': 'Illegal Parking'
 }
 
+
+def _xml_text(elem):
+    """Return an XML element's text as a stripped string.
+
+    xmltodict returns None for an empty element (``<x/>``) and a dict with
+    no ``#text`` key for an empty element that has attributes
+    (``<x type="string"/>`` or ``<x type="string"><![CDATA[]]></x>``).
+    Both become '' here instead of None or the literal string 'None'.
+    """
+    if isinstance(elem, dict):
+        elem = elem.get('#text')
+    if elem is None:
+        return ''
+    return str(elem).strip()
+
 class APIpost:
     """Base class for IPC v1.x camera events.
 
@@ -81,12 +96,7 @@ class APIpost:
             str(device_name or 'Unknown Camera')
         )
         smart_type = config.get('smartType', {})
-        self.alarm_type = (
-            smart_type.get('#text') if isinstance(smart_type, dict) else
-            smart_type.get('value') if isinstance(smart_type, dict) else
-            smart_type.get('@type') if isinstance(smart_type, dict) else
-            str(smart_type)
-        ).strip()
+        self.alarm_type = _xml_text(smart_type)
         self.alarm_description = VT_alarm_types.get(self.alarm_type, 'Unknown Alarm')
         current_time = config.get('currentTime', {})
         time_text = (
@@ -260,20 +270,12 @@ class CommonImagesLocation(APIpost):
             length = length.get('#text', '0') if isinstance(length, dict) else str(length)
             if length and int(length) > 0:
                 base64_data = target_data.get('targetBase64Data', {}) or target_data.get('sourceBase64Data', {})
-                self.target_image = (
-                    base64_data.get('#text') if isinstance(base64_data, dict) else
-                    base64_data.get('value') if isinstance(base64_data, dict) else
-                    str(base64_data)
-                ).strip()
+                self.target_image = _xml_text(base64_data)
                 self.has_target_image = bool(self.target_image)
         source_info = config.get('sourceDataInfo', {})
         if source_info:
             base64_data = source_info.get('sourceBase64Data', {})
-            self.source_image = (
-                base64_data.get('#text') if isinstance(base64_data, dict) else
-                base64_data.get('value') if isinstance(base64_data, dict) else
-                str(base64_data)
-            ).strip()
+            self.source_image = _xml_text(base64_data)
             self.has_source_image = bool(self.source_image)
         super().__init__(post_body, self.json)
 
@@ -298,11 +300,7 @@ class FaceDetectionImages(APIpost):
         source_info = config.get('sourceDataInfo', {})
         if source_info:
             base64_data = source_info.get('sourceBase64Data', {})
-            self.source_image = (
-                base64_data.get('#text') if isinstance(base64_data, dict) else
-                base64_data.get('value') if isinstance(base64_data, dict) else
-                str(base64_data)
-            ).strip()
+            self.source_image = _xml_text(base64_data)
             self.has_source_image = bool(self.source_image)
 
         # 2. Face crops – one or more in listInfo/item
@@ -320,11 +318,7 @@ class FaceDetectionImages(APIpost):
                 length = length_elem.get('#text', '0') if isinstance(length_elem, dict) else str(length_elem)
                 if length and int(length) > 0:
                     base64_elem = target_data.get('targetBase64Data', {})
-                    self.target_image = (
-                        base64_elem.get('#text') if isinstance(base64_elem, dict) else
-                        base64_elem.get('value') if isinstance(base64_elem, dict) else
-                        str(base64_elem)
-                    ).strip()
+                    self.target_image = _xml_text(base64_elem)
                     self.has_target_image = bool(self.target_image)
 
         super().__init__(post_body, self.json)
@@ -364,22 +358,14 @@ class VideoMetadata(APIpost):
         Parsed_length = length.get('#text', '0') if isinstance(length, dict) else str(length)
         if Parsed_length and int(Parsed_length) > 0:
             base64_data = source_info.get('sourceBase64Data', {})
-            self.source_image = (
-                base64_data.get('#text') if isinstance(base64_data, dict) else
-                base64_data.get('value') if isinstance(base64_data, dict) else
-                str(base64_data)
-            ).strip()
+            self.source_image = _xml_text(base64_data)
             self.has_source_image = bool(self.source_image)
         target_data = vsd.get('targetImageData', {})
         length = target_data.get('targetBase64Length', {})
         Parsed_length = length.get('#text', '0') if isinstance(length, dict) else str(length)
         if Parsed_length and int(Parsed_length) > 0:
             base64_data = target_data.get('targetBase64Data', {})
-            self.target_image = (
-                base64_data.get('#text') if isinstance(base64_data, dict) else
-                base64_data.get('value') if isinstance(base64_data, dict) else
-                str(base64_data)
-            ).strip()
+            self.target_image = _xml_text(base64_data)
             self.has_target_image = bool(self.target_image)
         super().__init__(post_body, self.json)
 
@@ -441,31 +427,19 @@ class LPR(APIpost):
                 length = length_elem.get('#text') if isinstance(length_elem, dict) else str(length_elem)
                 if length and int(length) > 0:
                     base64_elem = img_data.get('targetBase64Data', {})
-                    self.source_image = (
-                        base64_elem.get('#text') if isinstance(base64_elem, dict) else
-                        base64_elem.get('value') if isinstance(base64_elem, dict) else
-                        str(base64_elem)
-                    ).strip()
+                    self.source_image = _xml_text(base64_elem)
                     self.has_source_image = bool(self.source_image)
             # Plate info and image (item 1 or only item)
             if idx == 1 or (idx == 0 and len(items) == 1):
                 plate_num = item.get('plateNumber', {})
-                self.plate_number = (
-                    plate_num.get('#text') if isinstance(plate_num, dict) else
-                    plate_num.get('value') if isinstance(plate_num, dict) else
-                    str(plate_num)
-                ).strip()
+                self.plate_number = _xml_text(plate_num)
 
                 img_data = item.get('targetImageData', {})
                 length_elem = img_data.get('targetBase64Length', {})
                 length = length_elem.get('#text') if isinstance(length_elem, dict) else str(length_elem)
                 if length and int(length) > 0:
                     base64_elem = img_data.get('targetBase64Data', {})
-                    self.target_image = (
-                        base64_elem.get('#text') if isinstance(base64_elem, dict) else
-                        base64_elem.get('value') if isinstance(base64_elem, dict) else
-                        str(base64_elem)
-                    ).strip()
+                    self.target_image = _xml_text(base64_elem)
                     self.has_target_image = bool(self.target_image)
 
         # === FALLBACK: some firmware puts overview in sourceDataInfo ===
@@ -473,11 +447,7 @@ class LPR(APIpost):
             source_info = config.get('sourceDataInfo', {})
             if source_info:
                 base64_data = source_info.get('sourceBase64Data', {})
-                src = (
-                    base64_data.get('#text') if isinstance(base64_data, dict) else
-                    base64_data.get('value') if isinstance(base64_data, dict) else
-                    str(base64_data)
-                ).strip()
+                src = _xml_text(base64_data)
                 if src:
                     self.source_image = src
                     self.has_source_image = True
