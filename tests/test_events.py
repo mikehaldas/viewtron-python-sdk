@@ -478,3 +478,76 @@ class TestViewtronEvent:
         from viewtron import ViewtronEvent
 
         assert ViewtronEvent("not xml at all") is None
+
+
+# ============================================================
+# Empty image / text elements (GitHub issue #1)
+# ============================================================
+
+class TestEmptyElements:
+    """xmltodict turns <x type="string"/> into {'@type': 'string'} (no '#text')
+    and <x/> into None. Neither should crash parsing or produce a fake image."""
+
+    AOI_EMPTY_SOURCE = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<config version="1.7" xmlns="http://www.ipc.com/ver10">'
+        '<smartType type="openAlramObj">AOIENTRY</smartType>'
+        '<sourceDataInfo><sourceBase64Length type="uint32">0</sourceBase64Length>'
+        '<sourceBase64Data type="string"><![CDATA[]]></sourceBase64Data></sourceDataInfo>'
+        '</config>'
+    )
+
+    AOI_EMPTY_TARGET = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<config version="1.7" xmlns="http://www.ipc.com/ver10">'
+        '<smartType type="openAlramObj">AOIENTRY</smartType>'
+        '<listInfo type="list" count="1"><item><targetImageData>'
+        '<targetBase64Length type="uint32">10</targetBase64Length>'
+        '<targetBase64Data type="string"></targetBase64Data>'
+        '</targetImageData></item></listInfo>'
+        '</config>'
+    )
+
+    def test_issue_repro_no_crash(self):
+        from viewtron.events import CommonImagesLocation
+        xml = ('<?xml version="1.0" encoding="UTF-8"?><config><sourceDataInfo>'
+               '<sourceBase64Data type="jpg"/></sourceDataInfo></config>')
+        event = CommonImagesLocation(xml)
+        assert event.source_image_exists() is False
+
+    def test_empty_source_image_with_attribute(self):
+        from viewtron import ViewtronEvent
+        event = ViewtronEvent(self.AOI_EMPTY_SOURCE)
+        assert isinstance(event, IntrusionEntry)
+        assert event.source_image_exists() is False
+        assert event.get_source_image_bytes() is None
+
+    def test_empty_target_image_with_attribute(self):
+        from viewtron import ViewtronEvent
+        event = ViewtronEvent(self.AOI_EMPTY_TARGET)
+        assert isinstance(event, IntrusionEntry)
+        assert event.target_image_exists() is False
+
+    def test_empty_element_without_attribute_is_not_literal_none(self):
+        from viewtron import ViewtronEvent
+        xml = self.AOI_EMPTY_SOURCE.replace(
+            '<sourceBase64Data type="string"><![CDATA[]]></sourceBase64Data>',
+            '<sourceBase64Data/>')
+        event = ViewtronEvent(xml)
+        assert event.source_image_exists() is False
+        assert event.get_source_image() is None
+
+    def test_face_and_lpr_empty_images(self):
+        face = load_fixture("ipc-v1x", "face-detection.xml")
+        import re
+        face = re.sub(r'(<sourceBase64Data[^>]*>).*?(</sourceBase64Data>)',
+                      r'\1\2', face, flags=re.S)
+        event = FaceDetection(face)
+        assert event.source_image_exists() is False
+
+        lpr = load_fixture("ipc-v1x", "lpr.xml")
+        lpr = re.sub(r'(<(target|source)Base64Data[^>]*>).*?(</\2Base64Data>)',
+                     r'\1\3', lpr, flags=re.S)
+        event = LPR(lpr)
+        assert event.images_exist() is False
+        assert event.get_plate_number()  # plate still parsed
