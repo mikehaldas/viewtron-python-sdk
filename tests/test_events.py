@@ -6,9 +6,12 @@ These fixtures have placeholder strings instead of real base64 image data.
 """
 
 import os
+import re
+
 import pytest
 
 from viewtron import (
+    ViewtronEvent,
     # IPC v1.x
     LPR,
     FaceDetection,
@@ -25,6 +28,7 @@ from viewtron import (
     TargetCountingByArea,
     VideoMetadataV2,
 )
+from viewtron.events import _classify_post
 
 # Path to XML fixtures in the API repo
 FIXTURES_DIR = os.path.join(
@@ -551,3 +555,165 @@ class TestEmptyElements:
         event = LPR(lpr)
         assert event.images_exist() is False
         assert event.get_plate_number()  # plate still parsed
+
+
+# ====================== Version variation and unparsed ======================
+
+
+def rewrite_config_version(xml, version):
+    updated, count = re.subn(
+        r'(<config\b[^>]*\bversion=")[^"]*"',
+        lambda match: match.group(1) + version + '"',
+        xml,
+        count=1,
+    )
+    if count == 0 and re.search(r'<config\b[^>]*\bversion="', xml):
+        raise AssertionError("config version was not rewritten")
+    return updated
+
+
+def event_snapshot(event):
+    """Fields that must stay stable when only the config version changes."""
+    if event is None:
+        return None
+    snap = {
+        "class": type(event).__name__,
+        "category": getattr(event, "category", None),
+        "alarm": event.get_alarm_type(),
+        "description": event.get_alarm_description(),
+        "format": event.format,
+    }
+    for name in (
+        "get_plate_number",
+        "get_plate_group",
+        "get_car_brand",
+        "get_car_model",
+        "get_car_type",
+        "get_car_color",
+        "get_face_age",
+        "get_face_sex",
+        "get_channel_id",
+    ):
+        fn = getattr(event, name, None)
+        if callable(fn):
+            snap[name] = fn()
+    return snap
+
+
+def _fixture_names(subdir):
+    names = []
+    folder = os.path.join(FIXTURES_DIR, subdir)
+    for name in sorted(os.listdir(folder)):
+        if name.endswith(".xml"):
+            names.append(name)
+    return names
+
+
+class TestVersionVariation:
+    @pytest.mark.parametrize("filename", _fixture_names("nvr-v2"))
+    @pytest.mark.parametrize("version", ["2.1.0", "2.9.0"])
+    def test_nvr_fixtures_parse_the_same_at_later_2x(self, filename, version):
+        original_xml = load_fixture("nvr-v2", filename)
+        original = ViewtronEvent(original_xml)
+        rewritten = ViewtronEvent(rewrite_config_version(original_xml, version))
+        assert event_snapshot(rewritten) == event_snapshot(original)
+        if original is not None:
+            assert original.format == "v2"
+            assert original.config_version == "2.0.0"
+            assert rewritten.format == "v2"
+            assert rewritten.config_version == version
+
+    @pytest.mark.parametrize("filename", _fixture_names("ipc-v1x"))
+    @pytest.mark.parametrize("version", ["1.0", "1.7"])
+    def test_ipc_fixtures_parse_the_same_at_1_0_and_1_7(self, filename, version):
+        original_xml = load_fixture("ipc-v1x", filename)
+        original = ViewtronEvent(original_xml)
+        rewritten = ViewtronEvent(rewrite_config_version(original_xml, version))
+        assert event_snapshot(rewritten) == event_snapshot(original)
+        if original is not None:
+            assert original.format == "v1"
+            assert rewritten.format == "v1"
+            assert rewritten.config_version == version
+
+
+class TestDefensiveRouting:
+    def test_ipc_body_at_2_1_parses(self):
+        xml = rewrite_config_version(load_fixture("ipc-v1x", "lpr.xml"), "2.1.0")
+        event, reason = _classify_post(xml)
+        assert reason is None
+        assert isinstance(event, LPR)
+        assert event.category == "lpr"
+        assert event.get_plate_number() == "ABC1234"
+        assert event.get_plate_group() == "whiteList"
+        assert event.format == "v2"
+        assert event.config_version == "2.1.0"
+
+    def test_uppercase_vehicle_with_plate_list_reaches_vehicle_lpr(self):
+        xml = rewrite_config_version(load_fixture("nvr-v2", "vehicle-lpr.xml"), "2.1.0")
+        xml = xml.replace("<smartType>vehicle</smartType>", "<smartType>VEHICLE</smartType>")
+        event, reason = _classify_post(xml)
+        assert reason is None
+        assert isinstance(event, VehicleLPR)
+        assert event.category == "lpr"
+        assert event.get_plate_number() == "JP116D"
+        assert event.get_alarm_description() == "License Plate Detection"
+        assert event.format == "v2"
+
+    def test_uppercase_vehicle_without_plate_list_is_unparsed(self):
+        xml = rewrite_config_version(load_fixture("nvr-v2", "vehicle-lpr.xml"), "2.1.0")
+        xml = xml.replace("<smartType>vehicle</smartType>", "<smartType>VEHICLE</smartType>")
+        xml = re.sub(r"<licensePlateListInfo>.*</licensePlateListInfo>", "", xml, flags=re.S)
+        event, reason = _classify_post(xml)
+        assert event is None
+        assert reason == "unknown-smartType"
+
+    def test_v2_without_message_type_is_unparsed(self):
+        xml = rewrite_config_version(load_fixture("nvr-v2", "vehicle-lpr.xml"), "2.1.0")
+        xml = xml.replace("<messageType>alarmData</messageType>", "")
+        event, reason = _classify_post(xml)
+        assert event is None
+        assert reason == "no-messageType"
+
+    def test_other_smart_types_match_case_insensitively(self):
+        xml = rewrite_config_version(
+            load_fixture("nvr-v2", "region-intrusion.xml"), "2.1.0"
+        )
+        xml = xml.replace(
+            "<smartType>regionIntrusion</smartType>",
+            "<smartType>REGIONINTRUSION</smartType>",
+        )
+        event, reason = _classify_post(xml)
+        assert reason is None
+        assert type(event).__name__ == "RegionIntrusion"
+        assert event.category == "intrusion"
+        assert event.get_alarm_description() == "Perimeter Intrusion"
+
+    def test_alarm_status_reason(self):
+        event, reason = _classify_post(load_fixture("ipc-v1x", "alarm-status.xml"))
+        assert event is None
+        assert reason == "alarmStatus"
+
+    def test_parse_error_reason(self):
+        event, reason = _classify_post('<?xml version="1.0"?><config>')
+        assert event is None
+        assert reason == "parse-error"
+
+    def test_unknown_smart_type_reason(self):
+        xml = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<config version="1.7"><smartType>MOTION</smartType></config>'
+        )
+        event, reason = _classify_post(xml)
+        assert event is None
+        assert reason == "unknown-smartType"
+
+    def test_lowercase_ipc_smart_type_keeps_the_same_class(self):
+        xml = load_fixture("ipc-v1x", "lpr.xml").replace(
+            ">VEHICE<", ">vehice<", 1
+        )
+        event, reason = _classify_post(xml)
+        assert reason is None
+        assert isinstance(event, LPR)
+        assert event.get_alarm_type() == "vehice"
+        assert event.get_plate_number() == "ABC1234"
+        assert event.get_alarm_description() == "License Plate Detection"

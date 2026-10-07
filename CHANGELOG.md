@@ -1,5 +1,58 @@
 # Changelog
 
+## 1.4.0 — unreleased
+
+Prepares the camera client and event parser for API 2.1 cameras. Outgoing
+requests still use config version 2.1.0.
+
+### Added
+
+- **Capability discovery.** `get_supported_apis()` reads
+  `applicationInterfaces/item`, de-duplicates names, and returns a
+  `frozenset`. It returns `None` on Invalid Request or HTTP 400 (the command
+  list is unknown, which is typical of 1.x firmware) and caches the result
+  on the client. `capabilities` adds `apiVersion` and `httpPostVersion`
+  from `GetDeviceInfo`, with a `GetDeviceDetail` fallback, plus the response
+  config version.
+- **Plate groups by name.** `get_plate_groups()` returns `{id: name}` from
+  `GetLicensePlateGroups`. Plate methods take `group=` (`whiteList`,
+  `blackList`, `temporaryList`) and still accept `group_id=`.
+  `get_all_plates()` pages with `resultOffset`, `maxResult`, and `total`,
+  and reads every group when no group is given.
+- **Typed errors.** `ViewtronAPIError(code, desc, http_status)` for camera
+  and HTTP failures. `UnsupportedFeature` when this firmware has no
+  LicensePlates API. An empty HTTP 400 body is
+  `Invalid Request (HTTP 400, empty body)`.
+- **`on_unparsed(xml, client_ip, reason)`** on `ViewtronServer`. Reasons are
+  `unknown-smartType`, `no-messageType`, `parse-error`, and `alarmStatus`.
+  `on_raw` is unchanged.
+- **`config_version` and `format`** (`"v1"` or `"v2"`) on every parsed event.
+
+### Changed
+
+- **Plate group id `"1"` is no longer described as the allow list.** On
+  current firmware (observed on a camera running 5.3.1, API 2.1.0) group 1
+  is the temporary list and the allow list is `whiteList`, typically group
+  2. The `"1"` default remains for this release and warns once per process
+  when a call relies on it. A future major release will default to
+  `whiteList`.
+- **`get_plates()` raises** on any `errorCode` other than 0 and 20. Code 20
+  (Resources Not Exist) is still an empty list.
+- **`add_plate()` checks the top-level error before the per-item error.**
+- **`_post()` checks the HTTP status** and raises `ViewtronAPIError`.
+- **Version-2 posts with no `messageType`** are parsed with the IPC classes
+  when `smartType` is in the IPC table. `smartType` is matched without case
+  inside a table when that does not change the class. `VEHICLE` in a
+  version-2 envelope reaches `VehicleLPR` only when `licensePlateListInfo`
+  is present; otherwise the post is unparsed.
+- **Chunked HTTP bodies** are read by the server. A chunked POST is never
+  treated as a keepalive.
+
+The older `GetVehiclePlate` / `AddVehiclePlate` command family is not
+implemented. Firmware that does not list `GetLicensePlates`, or whose
+read-only `GetLicensePlates` probe returns Invalid Request, raises
+`UnsupportedFeature`.
+
 ## 1.3.1 — unreleased
 
 ### Fixed

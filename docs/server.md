@@ -24,7 +24,10 @@ Usage:
             print(f"  Plate: {event.get_plate_number()}")
             print(f"  Group: {event.get_plate_group()}")
 
-    server = ViewtronServer(port=5050, on_event=on_event)
+    def on_unparsed(xml, client_ip, reason):
+        print(reason, client_ip)
+
+    server = ViewtronServer(port=5050, on_event=on_event, on_unparsed=on_unparsed)
     server.serve_forever()
 
 You can find Viewtron IP cameras at https://www.Viewtron.com
@@ -49,7 +52,22 @@ HTTP server that receives events from Viewtron IP cameras.
   first connects (sends its first keepalive).
 - `on_raw` - Optional callback(xml_text, client_ip) called with the
   raw XML body of every POST (before parsing). Useful for
-  logging or debugging.
+  logging or debugging. Traject posts are not passed here.
+- `on_unparsed` - Optional callback(xml_text, client_ip, reason)
+  called when a POST body is not a keepalive and does not
+  become an event. ``reason`` is one of:
+  
+  - ``"unknown-smartType"`` — smartType is not in the table
+  for that envelope (for example MOTION, or VEHICLE in a
+  version-2 post that has no licensePlateListInfo)
+  - ``"no-messageType"`` — a version-2 post has no
+  messageType and is not an IPC-style body
+  - ``"parse-error"`` — the body is not well-formed XML
+  - ``"alarmStatus"`` — an alarm on/off status post
+  
+  Chunked request bodies (``Transfer-Encoding: chunked``) are
+  decoded. A chunked POST is never treated as the empty-body
+  keepalive, even when ``Content-Length`` is missing or 0.
   
 
 **Example**:

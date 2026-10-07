@@ -34,9 +34,15 @@ def __getattr__(name):
         return getattr(events, name)
 
     # Camera client (client.py)
-    if name == "ViewtronCamera":
-        from viewtron.client import ViewtronCamera
-        return ViewtronCamera
+    _client = {
+        "ViewtronCamera",
+        "ViewtronAPIError",
+        "UnsupportedFeature",
+        "CameraCapabilities",
+    }
+    if name in _client:
+        from viewtron import client
+        return getattr(client, name)
 
     # Event server (server.py)
     if name == "ViewtronServer":
@@ -46,7 +52,7 @@ def __getattr__(name):
     raise AttributeError(f"module 'viewtron' has no attribute {name!r}")
 
 
-__version__ = "1.3.1"
+__version__ = "1.4.0"
 
 __all__ = [
     # IPC v1.x
@@ -78,6 +84,9 @@ __all__ = [
     "Traject",
     # Client
     "ViewtronCamera",
+    "ViewtronAPIError",
+    "UnsupportedFeature",
+    "CameraCapabilities",
     # Server
     "ViewtronServer",
 ]

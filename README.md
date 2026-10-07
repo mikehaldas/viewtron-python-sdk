@@ -26,9 +26,17 @@ def on_event(event, client_ip):
         overview = event.get_source_image_bytes()   # full scene
         plate_crop = event.get_target_image_bytes() # plate closeup
 
-server = ViewtronServer(port=5050, on_event=on_event)
+def on_unparsed(xml, client_ip, reason):
+    # reason is unknown-smartType, no-messageType, parse-error, or alarmStatus
+    print(reason, client_ip)
+
+server = ViewtronServer(port=5050, on_event=on_event, on_unparsed=on_unparsed)
 server.serve_forever()
 ```
+
+Every parsed event has `config_version` (the post's config version, such as `"1.7"` or `"2.1.0"`) and `format` (`"v1"` or `"v2"`). A version-2 post that uses an IPC smartType and has no `messageType` is parsed with the IPC classes. `smartType` matching ignores case when that is unambiguous. `VEHICLE` in a version-2 envelope is a plate event only when `licensePlateListInfo` is present; otherwise `on_unparsed` is called with `unknown-smartType`.
+
+`on_raw` is unchanged. The server reads `Transfer-Encoding: chunked` bodies and does not treat them as keepalives.
 
 ### Supported Event Types
 
@@ -49,7 +57,7 @@ server.serve_forever()
 | NVR v2.0 | `TargetCountingByArea` | People/vehicle counting by area |
 | NVR v2.0 | `VideoMetadataV2` | Continuous object detection |
 
-Version detection is automatic — IPC v1.x and NVR v2.0 use different XML structures but the SDK handles both.
+Version detection is automatic. IPC v1.x and version-2 posts (2.0, 2.1, and later 2.x versions with the same layout) use different XML structures; the SDK handles both. Check `event.format` and `event.config_version` when you need to tell them apart.
 
 ## Outbound API — Control the Camera
 
@@ -62,15 +70,26 @@ camera = ViewtronCamera("192.168.0.20", "admin", "password")
 info = camera.get_device_info()
 print(info["model"])  # "LPR-IP4"
 
-# Manage the license plate database
-plates = camera.get_plates()
-camera.add_plate("ABC1234")
-camera.modify_plate("ABC1234", owner="Mike", telephone="555-1234")
-camera.delete_plate("ABC1234")
+# What this firmware supports
+caps = camera.capabilities
+print(caps.api_version, caps.http_post_version, caps.config_version)
+print(caps.supported_apis)  # frozenset, or None when GetSupportedAPIs is unavailable
+
+# Plate groups. On current firmware (a camera running 5.3.1, API 2.1.0)
+# group 1 is temporaryList and the allow list is whiteList, typically group 2.
+print(camera.get_plate_groups())  # {1: "temporaryList", 2: "whiteList", 3: "blackList"}
+
+# Manage the license plate database. Pass group= so the id is resolved for you.
+# Omitting it still uses group id "1" and warns once; that default changes in a future major release.
+plates = camera.get_plates(group="whiteList")
+camera.add_plate("ABC1234", group="whiteList")
+camera.modify_plate("ABC1234", owner="Mike", telephone="555-1234", group="whiteList")
+camera.delete_plate("ABC1234", group="whiteList")
+all_plates = camera.get_all_plates()  # every group, paged with resultOffset / maxResult / total
 
 # Or use as context manager
 with ViewtronCamera("192.168.0.20", "admin", "password") as cam:
-    plates = cam.get_plates()
+    plates = cam.get_plates(group="whiteList")
 ```
 
 ## Projects Using This SDK

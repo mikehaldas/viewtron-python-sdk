@@ -87,6 +87,12 @@ face attributes, etc.).
 - `alarm_description` _str_ - Human-readable description (e.g.,
   "License Plate Detection").
 - `ip_cam` _str_ - Camera device name.
+- `config_version` _str_ - ``version`` attribute from the post's
+  ``<config>`` element, such as ``"1.7"`` or ``"2.1.0"``.
+- `format` _str_ - ``"v1"`` or ``"v2"``, from the major digit of
+  ``config_version``. A direct camera post that uses a 2.x
+  config version is ``"v2"`` even when its body matches the
+  IPC layout.
   
 
 **Notes**:
@@ -365,6 +371,13 @@ class APIpostV2()
 
 Base class for NVR v2.0 HTTP Posts.
 
+**Attributes**:
+
+- `config_version` _str_ - ``version`` attribute from the post, such
+  as ``"2.0.0"`` or ``"2.1.0"``.
+- `format` _str_ - ``"v2"`` when ``config_version`` starts with ``2``,
+  otherwise ``"v1"``.
+
 <a id="viewtron.events.APIpostV2.get_source_image_bytes"></a>
 
 #### get\_source\_image\_bytes
@@ -626,6 +639,8 @@ bounding box, velocity, and direction.
 - `device_name` - Camera name from the post
 - `mac` - Camera MAC address
 - `timestamp` - Event timestamp
+- `config_version` - ``version`` attribute from the post
+- `format` - ``"v1"`` or ``"v2"``
 
 <a id="viewtron.events.ViewtronEvent"></a>
 
@@ -663,6 +678,11 @@ correct parsed event object.
   - ``"traject"`` — Traject. High-volume tracking data with target
   IDs, types, and bounding boxes.
   - None — Keepalives, alarm status messages, unrecognized events.
+  
+  Every returned event has ``config_version`` (the post's config
+  ``version`` attribute, for example ``"2.1.0"``) and ``format``
+  (``"v1"`` or ``"v2"``). ``ViewtronServer`` reports posts that stay
+  None through its ``on_unparsed`` callback.
   
 
 **Example**:

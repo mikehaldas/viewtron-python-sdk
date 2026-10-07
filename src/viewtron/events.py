@@ -61,6 +61,40 @@ def _xml_text(elem):
         return ''
     return str(elem).strip()
 
+
+def _lookup_ci(table, smart_type):
+    """Return the table key for ``smart_type``, ignoring case when unambiguous."""
+    if smart_type in table:
+        return smart_type
+    folded = str(smart_type).casefold()
+    matches = [key for key in table if key.casefold() == folded]
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+def _alarm_description(table, alarm_type):
+    """Look up a description. Exact keys win; otherwise one case-insensitive match."""
+    if alarm_type in table:
+        return table[alarm_type]
+    key = _lookup_ci(table, alarm_type)
+    if key is not None:
+        return table[key]
+    return 'Unknown Alarm'
+
+
+def _apply_version_fields(event, config):
+    """Set ``config_version`` and ``format`` (``v1`` or ``v2``) from the post."""
+    version = ''
+    if isinstance(config, dict):
+        version = config.get('@version', '') or ''
+        if isinstance(version, dict):
+            version = version.get('#text', '') or ''
+    version = str(version)
+    event.config_version = version
+    event.format = 'v2' if version.startswith('2') else 'v1'
+
+
 class APIpost:
     """Base class for IPC v1.x camera events.
 
@@ -76,6 +110,12 @@ class APIpost:
         alarm_description (str): Human-readable description (e.g.,
             "License Plate Detection").
         ip_cam (str): Camera device name.
+        config_version (str): ``version`` attribute from the post's
+            ``<config>`` element, such as ``"1.7"`` or ``"2.1.0"``.
+        format (str): ``"v1"`` or ``"v2"``, from the major digit of
+            ``config_version``. A direct camera post that uses a 2.x
+            config version is ``"v2"`` even when its body matches the
+            IPC layout.
 
     Note:
         Do not instantiate directly. Use ``ViewtronEvent(xml)`` instead.
@@ -97,7 +137,8 @@ class APIpost:
         )
         smart_type = config.get('smartType', {})
         self.alarm_type = _xml_text(smart_type)
-        self.alarm_description = VT_alarm_types.get(self.alarm_type, 'Unknown Alarm')
+        self.alarm_description = _alarm_description(VT_alarm_types, self.alarm_type)
+        _apply_version_fields(self, config)
         current_time = config.get('currentTime', {})
         time_text = (
             current_time.get('#text') if isinstance(current_time, dict) else
@@ -492,7 +533,14 @@ VT_alarm_types_v2 = {
 }
 
 class APIpostV2:
-    """Base class for NVR v2.0 HTTP Posts."""
+    """Base class for NVR v2.0 HTTP Posts.
+
+    Attributes:
+        config_version (str): ``version`` attribute from the post, such
+            as ``"2.0.0"`` or ``"2.1.0"``.
+        format (str): ``"v2"`` when ``config_version`` starts with ``2``,
+            otherwise ``"v1"``.
+    """
     def __init__(self, post_body, json):
         self.xml = str(post_body)
         self.json = json
@@ -509,7 +557,8 @@ class APIpostV2:
 
         # === ALARM TYPE ===
         self.alarm_type = str(config.get('smartType', '')).strip()
-        self.alarm_description = VT_alarm_types_v2.get(self.alarm_type, 'Unknown Alarm')
+        self.alarm_description = _alarm_description(VT_alarm_types_v2, self.alarm_type)
+        _apply_version_fields(self, config)
 
         # === TIMESTAMP (microseconds) ===
         current_time = config.get('currentTime', '')
@@ -912,6 +961,8 @@ class Traject:
         device_name: Camera name from the post
         mac: Camera MAC address
         timestamp: Event timestamp
+        config_version: ``version`` attribute from the post
+        format: ``"v1"`` or ``"v2"``
     """
 
     def __init__(self, post_body):
@@ -922,6 +973,8 @@ class Traject:
         self.mac = ""
         self.time_stamp_formatted = ""
         self.source = "IPC"
+        self.config_version = ""
+        self.format = "v1"
 
         try:
             data = xmltodict.parse(post_body)
@@ -929,6 +982,7 @@ class Traject:
             return
 
         config = data.get('config', {})
+        _apply_version_fields(self, config)
         version = config.get('@version', '')
 
         # Device info
@@ -1094,6 +1148,11 @@ def ViewtronEvent(post_body):
           IDs, types, and bounding boxes.
         - None — Keepalives, alarm status messages, unrecognized events.
 
+        Every returned event has ``config_version`` (the post's config
+        ``version`` attribute, for example ``"2.1.0"``) and ``format``
+        (``"v1"`` or ``"v2"``). ``ViewtronServer`` reports posts that stay
+        None through its ``on_unparsed`` callback.
+
     Example:
         from viewtron import ViewtronEvent
 
@@ -1109,64 +1168,124 @@ def ViewtronEvent(post_body):
             print(event.get_plate_number())      # "ABC1234"
             print(event.get_plate_group())       # "whiteList"
     """
-    if not post_body or '<?xml' not in post_body:
+    event, _reason = _classify_post(post_body)
+    return event
+
+
+def _ipc_alarm_type(config):
+    """IPC smartType text, or None when the element is absent.
+
+    Matches the historical v1.x extraction: a dict uses ``#text`` and
+    falls back to ``str(dict)`` so existing posts keep the same type.
+    """
+    st = config.get('smartType')
+    if st is None:
         return None
+    if isinstance(st, dict):
+        return (st.get('#text') or str(st)).strip()
+    return str(st).strip()
+
+
+def _has_license_plate_list(config):
+    return config.get('licensePlateListInfo') is not None
+
+
+def _ipc_key_without_message_type(smart_type):
+    """IPC class key for a version-2 post that has no messageType.
+
+    An exact IPC key is used as-is, which is how an IPC-style body posted
+    with config version 2.x is recognized. A case-insensitive match is
+    used only when that spelling is not also an NVR smartType, so a v2
+    ``vehicle`` post is not read as an IPC ``VEHICLE`` event.
+    """
+    if not smart_type:
+        return None
+    if smart_type in _IPC_CLASS_LOOKUP:
+        return smart_type
+    key = _lookup_ci(_IPC_CLASS_LOOKUP, smart_type)
+    if key is None:
+        return None
+    if _lookup_ci(_NVR_CLASS_LOOKUP, smart_type) is not None:
+        return None
+    return key
+
+
+def _build_ipc_event(post_body, key):
+    event = _IPC_CLASS_LOOKUP[key](post_body)
+    event.category = _CATEGORY_MAP_IPC.get(key, 'other')
+    return event
+
+
+def _build_nvr_event(post_body, key):
+    event = _NVR_CLASS_LOOKUP[key](post_body)
+    event.category = _CATEGORY_MAP_NVR.get(key, 'other')
+    return event
+
+
+def _classify_post(post_body):
+    """Return ``(event, reason)``.
+
+    ``reason`` is None for a parsed event or a keepalive. Otherwise it is
+    one of ``unknown-smartType``, ``no-messageType``, ``parse-error``, or
+    ``alarmStatus``. ``ViewtronEvent`` returns only the event.
+    ``ViewtronServer`` passes ``reason`` to ``on_unparsed``.
+    """
+    if not post_body or '<?xml' not in post_body:
+        return None, None
 
     # Traject data (high-volume continuous tracking)
     if '<traject type="list"' in post_body:
-        event = Traject(post_body)
-        return event
+        return Traject(post_body), None
 
-    # Skip alarm status on/off messages
+    # Alarm status on/off messages are not detection events.
     if 'alarmStatusInfo' in post_body:
-        return None
+        return None, 'alarmStatus'
 
     try:
         data = xmltodict.parse(post_body)
     except Exception:
-        return None
+        return None, 'parse-error'
 
     config = data.get('config', {})
     if not config:
-        return None
+        return None, None
 
-    version = config.get('@version', '')
+    version = str(config.get('@version', '') or '')
 
     if version.startswith('2'):
-        # NVR v2.0 format
-        msg_type = str(config.get('messageType', ''))
-        if msg_type == 'keepalive':
-            return None
-        if msg_type != 'alarmData':
-            return None
+        msg_type = config.get('messageType')
+        msg_text = str(msg_type).strip() if msg_type is not None else ''
+        if msg_text == 'keepalive':
+            return None, None
+        if msg_text != 'alarmData':
+            # No messageType, but an IPC smartType: the body is the older
+            # camera layout inside a 2.x envelope.
+            alarm_type = _ipc_alarm_type(config)
+            if not msg_text and alarm_type:
+                key = _ipc_key_without_message_type(alarm_type)
+                if key is not None:
+                    return _build_ipc_event(post_body, key), None
+            return None, 'no-messageType'
 
-        smart_type = str(config.get('smartType', '')).strip()
-        event_class = _NVR_CLASS_LOOKUP.get(smart_type)
-        if event_class is None:
-            return None
-
-        event = event_class(post_body)
-        event.category = _CATEGORY_MAP_NVR.get(smart_type, 'other')
-        return event
-    else:
-        # IPC v1.x format
-        # Check for keepalive (deviceInfo only, no smartType)
-        st = config.get('smartType')
-        if st is None:
-            return None
-
-        if isinstance(st, dict):
-            alarm_type = (st.get('#text') or str(st)).strip()
+        raw = config.get('smartType', '')
+        if isinstance(raw, dict):
+            smart_type = (raw.get('#text') or str(raw)).strip()
         else:
-            alarm_type = str(st).strip()
+            smart_type = str(raw).strip()
+        key = _lookup_ci(_NVR_CLASS_LOOKUP, smart_type)
+        if key is None:
+            return None, 'unknown-smartType'
+        # ``VEHICLE`` matches the v2 ``vehicle`` class only when the post
+        # actually carries the v2 plate list. Otherwise leave it unparsed.
+        if key.casefold() == 'vehicle' and not _has_license_plate_list(config):
+            return None, 'unknown-smartType'
+        return _build_nvr_event(post_body, key), None
 
-        if not alarm_type:
-            return None
-
-        event_class = _IPC_CLASS_LOOKUP.get(alarm_type)
-        if event_class is None:
-            return None
-
-        event = event_class(post_body)
-        event.category = _CATEGORY_MAP_IPC.get(alarm_type, 'other')
-        return event
+    # IPC v1.x format. No smartType is a keepalive (device info only).
+    alarm_type = _ipc_alarm_type(config)
+    if alarm_type is None or alarm_type == '':
+        return None, None
+    key = _lookup_ci(_IPC_CLASS_LOOKUP, alarm_type)
+    if key is None:
+        return None, 'unknown-smartType'
+    return _build_ipc_event(post_body, key), None
