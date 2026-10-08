@@ -30,13 +30,14 @@ Supports license plate CRUD operations and device info queries.
 
   from viewtron import ViewtronCamera
   
+  # Viewtron cameras ship set to DHCP. Use the address your router assigned.
   camera = ViewtronCamera("192.168.0.20", "admin", "password")
   
   # Plate management
-  camera.add_plate("ABC1234", group="whiteList")
+  camera.add_plate("IB36NL", group="whiteList")
   plates = camera.get_plates(group="whiteList")
-  camera.modify_plate("ABC1234", owner="Mike", telephone="555-1234", group="whiteList")
-  camera.delete_plate("ABC1234", group="whiteList")
+  camera.modify_plate("IB36NL", owner="Mike", telephone="555-1234", group="whiteList")
+  camera.delete_plate("IB36NL", group="whiteList")
   
   # Device info
   info = camera.get_device_info()
@@ -135,6 +136,7 @@ warns once per process. A future major release will default to
 
   from viewtron import ViewtronCamera
   
+  # Viewtron cameras ship set to DHCP. Use the address your router assigned.
   camera = ViewtronCamera("192.168.0.20", "admin", "password")
   plates = camera.get_plates(group="whiteList")
   for plate in plates:
@@ -263,7 +265,7 @@ provided. ``licensePlateType`` is response-only and is not sent.
 
 **Arguments**:
 
-- `plate_number` - The license plate (e.g., "ABC1234")
+- `plate_number` - The license plate (e.g., "IB36NL")
 - `group_id` - Numeric group id. Defaults to ``"1"``. On current
   firmware (observed on a camera running 5.3.1, API 2.1.0)
   group 1 is the temporary list. The allow list is

@@ -62,7 +62,7 @@ Most developers should use ``ViewtronEvent`` (the factory function) or
   print(event.get_plate_number())
   print(event.get_plate_group())
   
-  You can find Viewtron IP cameras at https://www.Viewtron.com
+  You can find Viewtron IP cameras at https://www.cctvcamerapros.com/viewtron-security-cameras-s/1476.htm
 
 <a id="viewtron.events.APIpost"></a>
 
@@ -191,7 +191,7 @@ Returns the detected license plate number.
 
 **Returns**:
 
-- `str` - Plate number (e.g., "ABC1234") or "<NO PLATE EXISTS>"
+- `str` - Plate number (e.g., "IB36NL") or "<NO PLATE EXISTS>"
   if this is not an LPR event.
 
 <a id="viewtron.events.APIpost.source_image_exists"></a>
@@ -328,7 +328,7 @@ HTTP POST XML.
 
 **Attributes**:
 
-- `plate_number` _str_ - Detected plate text (e.g., "ABC1234").
+- `plate_number` _str_ - Detected plate text (e.g., "IB36NL").
 - `vehicleListType` _str or None_ - Raw ``vehicleListType`` text, or
   None when the element is absent.
 - `direction` _str or None_ - ``"approach"``, ``"away"``, or None.
@@ -347,7 +347,7 @@ HTTP POST XML.
 
   event = ViewtronEvent(xml_body)
   if event.category == "lpr":
-  print(event.get_plate_number())  # "ABC1234"
+  print(event.get_plate_number())  # "IB36NL"
   print(event.get_plate_group())   # "whiteList"
   print(event.direction, event.confidence, event.plate_list)
 
@@ -467,7 +467,7 @@ Returns the detected license plate number.
 
 **Returns**:
 
-- `str` - Plate number (e.g., "ABC1234") or "<NO PLATE>".
+- `str` - Plate number (e.g., "IB36NL") or "<NO PLATE>".
 
 <a id="viewtron.events.VehicleLPR.get_plate_color"></a>
 
@@ -722,6 +722,6 @@ correct parsed event object.
   print(event.get_alarm_description()) # "License Plate Detection"
   
   if event.category == "lpr":
-  print(event.get_plate_number())      # "ABC1234"
+  print(event.get_plate_number())      # "IB36NL"
   print(event.get_plate_group())       # "whiteList"
 

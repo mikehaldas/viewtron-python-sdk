@@ -30,7 +30,7 @@ Usage:
     server = ViewtronServer(port=5050, on_event=on_event, on_unparsed=on_unparsed)
     server.serve_forever()
 
-You can find Viewtron IP cameras at https://www.Viewtron.com
+You can find Viewtron IP cameras at https://www.cctvcamerapros.com/viewtron-security-cameras-s/1476.htm
 
 <a id="viewtron.server.ViewtronServer"></a>
 

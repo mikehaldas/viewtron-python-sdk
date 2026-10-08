@@ -4,6 +4,8 @@ Python SDK for Viewtron IP camera API. Parse inbound alarm events and control ca
 
 Viewtron IP cameras run AI detection on-camera (license plate recognition, face detection, human/vehicle detection) and send HTTP POST events to your server. This SDK parses those events and provides an API client for camera control.
 
+Version 1.4.0 adds API 2.1 support for the [Viewtron LPR-IP4 license plate recognition camera](https://www.cctvcamerapros.com/LPR-Camera-p/lpr-ip4.htm) (firmware 5.3.x): plate direction (approach / away), confidence, allow / block / temporary plate lists by name, vehicle color, type, brand and model, capability discovery, and an `on_unparsed` hook for posts the SDK does not recognize.
+
 ## Install
 
 ```bash
@@ -19,7 +21,7 @@ from viewtron import ViewtronServer
 
 def on_event(event, client_ip):
     if event.category == "lpr":
-        print(event.get_plate_number())       # "ABC1234"
+        print(event.get_plate_number())       # "IB36NL"
         print(event.get_plate_group())        # "whiteList" or NVR group name
         print(event.direction)                # "approach", "away", or None
         print(event.confidence)               # 0-100, e.g. 99.0
@@ -46,6 +48,8 @@ On an LPR event, `direction` is `"approach"`, `"away"`, or `None`. A post that s
 
 `examples/gate_direction_filter.py` acts only on approaching allow-list plates at 90% confidence or higher.
 
+Every LPR field is documented in the [license plate recognition camera API](https://videos.cctvcamerapros.com/developer/docs/applications/license-plate-recognition-camera-api/) docs. For a real driveway or HOA gate setup, see our [ALPR gate access control](https://videos.cctvcamerapros.com/v/alpr-gate-access-control.html) walkthrough.
+
 ### Supported Event Types
 
 | Source | Class | Detection |
@@ -69,6 +73,8 @@ Version detection is automatic. IPC v1.x and version-2 posts (2.0, 2.1, and late
 
 ## Outbound API — Control the Camera
 
+Viewtron cameras ship set to DHCP, so the camera gets its address from your router. Find it with our [IP camera finder tool](https://www.cctvcamerapros.com/IP-Camera-Network-Setup-s/1489.htm) and use it in place of the example address below.
+
 ```python
 from viewtron import ViewtronCamera
 
@@ -90,9 +96,9 @@ print(camera.get_plate_groups())  # {1: "temporaryList", 2: "whiteList", 3: "bla
 # Manage the license plate database. Pass group= so the id is resolved for you.
 # Omitting it still uses group id "1" and warns once; that default changes in a future major release.
 plates = camera.get_plates(group="whiteList")
-camera.add_plate("ABC1234", group="allow")  # allow, block, and temporary also resolve
-camera.modify_plate("ABC1234", owner="Mike", telephone="555-1234", group="whiteList")
-camera.delete_plate("ABC1234", group="whiteList")
+camera.add_plate("IB36NL", group="allow")  # allow, block, and temporary also resolve
+camera.modify_plate("IB36NL", owner="Mike", telephone="555-1234", group="whiteList")
+camera.delete_plate("IB36NL", group="whiteList")
 all_plates = camera.get_all_plates()  # every group, paged with resultOffset / maxResult / total
 
 # Temporary visitor pass. Omitting begin_time and end_time lets the camera
@@ -100,7 +106,7 @@ all_plates = camera.get_all_plates()  # every group, paged with resultOffset / m
 from datetime import datetime, timedelta
 start = datetime.now().replace(microsecond=0)
 camera.add_plate(
-    "VISITOR1",
+    "IB36NL",
     group="temporary",
     owner="Visitor",
     card_number="1001",
@@ -116,7 +122,9 @@ with ViewtronCamera("192.168.0.20", "admin", "password") as cam:
 
 ## Projects Using This SDK
 
-- **[Viewtron Home Assistant Integration](https://github.com/mikehaldas/viewtron-homeassistant)** — Camera events as HA sensors via MQTT auto-discovery
+- **[Viewtron Home Assistant Integration](https://github.com/mikehaldas/viewtron-home-assistant)** — Camera events as HA sensors via MQTT auto-discovery
+- **[Viewtron Node.js SDK](https://github.com/mikehaldas/viewtron-nodejs-sdk)** — The same camera events for Node.js (`npm install viewtron-sdk`)
+- **[Node-RED Viewtron node](https://github.com/mikehaldas/node-red-contrib-viewtron)** — License plate, intrusion, face and counting events in Node-RED flows
 - **[IP Camera API Server](https://github.com/mikehaldas/IP-Camera-API)** — Alarm server with CSV logging and image saving
 
 ## Documentation
@@ -129,13 +137,16 @@ with ViewtronCamera("192.168.0.20", "admin", "password") as cam:
 - `examples/gate_direction_filter.py` — approaching allow-list plates at 90% confidence or higher
 - [IP Camera Setup Guide](https://videos.cctvcamerapros.com/support/topic/ip-camera-api-webbooks)
 - [NVR Setup Guide](https://videos.cctvcamerapros.com/support/topic/setup-nvr-api-webhooks)
+- [LPR camera API guide](https://videos.cctvcamerapros.com/v/lpr-camera-api.html) — plate webhooks, this SDK and Home Assistant, step by step
+- [Home Assistant license plate recognition](https://videos.cctvcamerapros.com/support/topic/home-assistant-lpr-camera-api) — forum walkthrough with automations
+- [Viewtron LPR camera API / HTTP Post questions](https://videos.cctvcamerapros.com/support/topic/lpr-camera-api-http-post) — answers to common integration questions
 
 ## Products
 
-- [All Viewtron Products](https://www.Viewtron.com)
-- [AI Security Cameras](https://www.cctvcamerapros.com/AI-security-cameras-s/1512.htm)
-- [LPR Cameras](https://www.cctvcamerapros.com/License-Plate-Recognition-Systems-s/1518.htm)
-- [Face Recognition Cameras](https://www.cctvcamerapros.com/face-recognition-cameras-s/1761.htm)
+- [Viewtron security cameras and surveillance systems](https://www.cctvcamerapros.com/viewtron-security-cameras-s/1476.htm)
+- [Viewtron license plate recognition systems](https://www.cctvcamerapros.com/License-Plate-Recognition-Systems-s/1518.htm)
+- [Viewtron IP cameras](https://www.cctvcamerapros.com/viewtron-IP-cameras-s/1474.htm) and [IP camera NVRs](https://www.cctvcamerapros.com/IP-Camera-NVRs-s/1472.htm)
+- [AI security cameras](https://www.cctvcamerapros.com/AI-security-cameras-s/1512.htm)
 
 ## Author
 

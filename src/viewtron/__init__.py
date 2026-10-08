@@ -10,8 +10,8 @@ Inbound events (camera sends HTTP POST to your server):
 Outbound API (your app sends commands to the camera):
     from viewtron import ViewtronCamera
 
-Full documentation: https://github.com/mikehaldas/viewtron-python
-Product page: https://www.Viewtron.com
+Full documentation: https://github.com/mikehaldas/viewtron-python-sdk
+Product page: https://www.cctvcamerapros.com/viewtron-security-cameras-s/1476.htm
 """
 
 
@@ -52,7 +52,7 @@ def __getattr__(name):
     raise AttributeError(f"module 'viewtron' has no attribute {name!r}")
 
 
-__version__ = "1.4.0"
+__version__ = "1.4.1"
 
 __all__ = [
     # IPC v1.x

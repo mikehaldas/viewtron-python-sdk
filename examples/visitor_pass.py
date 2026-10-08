@@ -9,11 +9,12 @@ from datetime import datetime, timedelta
 
 from viewtron import ViewtronCamera
 
+# Viewtron cameras ship set to DHCP. Use the address your router assigned.
 CAMERA_IP = "192.168.1.50"
 USERNAME = "admin"
 PASSWORD = ""
 
-PLATE = "VISITOR1"
+PLATE = "IB36NL"
 DAYS = 7
 OWNER = "Visitor"
 
