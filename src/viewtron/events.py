@@ -62,6 +62,81 @@ def _xml_text(elem):
     return str(elem).strip()
 
 
+def _parse_event_time(time_text):
+    """Return a datetime for a camera ``currentTime`` value.
+
+    The same element is seconds, milliseconds, or microseconds depending
+    on firmware. Values at or above 1e15 are microseconds, values at or
+    above 1e12 are milliseconds, and smaller values are seconds. Any
+    sub-second remainder is kept. Raises ``ValueError`` when ``time_text``
+    is missing or not an integer.
+    """
+    if time_text is None or str(time_text).strip() == '':
+        raise ValueError("missing time")
+    time_val = int(str(time_text).strip())
+    if time_val >= 1_000_000_000_000_000:
+        seconds, rem = divmod(time_val, 1_000_000)
+        micros = rem
+    elif time_val >= 1_000_000_000_000:
+        seconds, rem = divmod(time_val, 1_000)
+        micros = rem * 1_000
+    else:
+        seconds, micros = time_val, 0
+    stamp = dt.fromtimestamp(seconds)
+    if micros:
+        stamp = stamp.replace(microsecond=micros)
+    return stamp
+
+
+_DIRECTIONS = {
+    "approach": "approach",
+    "away": "away",
+    "leave": "away",
+}
+
+_PLATE_LISTS = {
+    "whitelist": "whiteList",
+    "blacklist": "blackList",
+    "temporarylist": "temporaryList",
+    "strangerlist": "strangerList",
+}
+
+
+def _normalize_direction(text):
+    """Map a post's direction text to ``approach``, ``away``, or None.
+
+    Documented IPC values are ``approach`` and ``leave``. Posts also send
+    ``away``. ``leave`` and ``away`` both become ``away``.
+    """
+    return _DIRECTIONS.get(str(text or "").strip().casefold())
+
+
+def _normalize_plate_list(text):
+    """Map ``vehicleListType`` to a known list name, or None."""
+    return _PLATE_LISTS.get(str(text or "").strip().casefold())
+
+
+def _plate_confidence(elem):
+    """Return PlateConfidence ``count`` as a 0–100 float.
+
+    ``count="9900"`` is 99.00. Missing or non-numeric counts are None.
+    """
+    if not isinstance(elem, dict):
+        return None
+    count = elem.get("@count")
+    if count in (None, ""):
+        return None
+    try:
+        return float(count) / 100.0
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_text(elem):
+    text = _xml_text(elem)
+    return text or None
+
+
 def _lookup_ci(table, smart_type):
     """Return the table key for ``smart_type``, ignoring case when unambiguous."""
     if smart_type in table:
@@ -140,17 +215,10 @@ class APIpost:
         self.alarm_description = _alarm_description(VT_alarm_types, self.alarm_type)
         _apply_version_fields(self, config)
         current_time = config.get('currentTime', {})
-        time_text = (
-            current_time.get('#text') if isinstance(current_time, dict) else
-            current_time.get('value') if isinstance(current_time, dict) else
-            str(current_time or '')
-        )
+        time_text = _xml_text(current_time) if isinstance(current_time, dict) else str(current_time or '')
         try:
-            time_val = int(time_text)
-            if time_val > 1_000_000_000_000: # milliseconds
-                time_val = time_val // 1000
-            self.time_stamp_formatted = dt.fromtimestamp(time_val)
-        except:
+            self.time_stamp_formatted = _parse_event_time(time_text)
+        except Exception:
             self.time_stamp_formatted = dt.now()
 
     def set_ip_address(self, ip_address):
@@ -172,10 +240,14 @@ class APIpost:
         return self.target_types
 
     def get_time_stamp_formatted(self):
-        """Returns event timestamp as a formatted string.
+        """Returns the camera event time as a string.
+
+        ``currentTime`` is read as seconds, milliseconds, or microseconds
+        by magnitude, so a microsecond post is the camera's event time
+        rather than the moment the post was parsed.
 
         Returns:
-            str: Timestamp like "2026-04-09 15:30:45".
+            str: Timestamp like "2026-10-07 17:24:47.427999".
         """
         return str(self.time_stamp_formatted)
 
@@ -419,14 +491,25 @@ class LPR(APIpost):
 
     Attributes:
         plate_number (str): Detected plate text (e.g., "ABC1234").
-        vehicleListType (str or None): "whiteList", "blackList",
-            "temporaryList", or None if the plate is not in the database.
+        vehicleListType (str or None): Raw ``vehicleListType`` text, or
+            None when the element is absent.
+        direction (str or None): ``"approach"``, ``"away"``, or None.
+            ``leave`` in the post is normalized to ``"away"``.
+        confidence (float or None): Detection confidence from 0 to 100.
+            ``PlateConfidence count="9900"`` is ``99.0``.
+        vehicle_color (str or None): ``carAttr/color`` when present.
+        vehicle_brand (str or None): ``carAttr/brand`` when present.
+        vehicle_type (str or None): ``carAttr/type`` when present.
+        vehicle_model (str or None): ``carAttr/model`` when present.
+        plate_list (str or None): ``whiteList``, ``blackList``,
+            ``temporaryList``, ``strangerList``, or None.
 
     Example:
         event = ViewtronEvent(xml_body)
         if event.category == "lpr":
             print(event.get_plate_number())  # "ABC1234"
             print(event.get_plate_group())   # "whiteList"
+            print(event.direction, event.confidence, event.plate_list)
     """
 
     def __init__(self, post_body):
@@ -434,6 +517,13 @@ class LPR(APIpost):
         config = self.json.get('config', {})
 
         self.vehicleListType = None
+        self.direction = None
+        self.confidence = None
+        self.vehicle_color = None
+        self.vehicle_brand = None
+        self.vehicle_type = None
+        self.vehicle_model = None
+        self.plate_list = None
         list_info = config.get('listInfo', {})
         items = list_info.get('item', [])
         if not isinstance(items, list):
@@ -452,6 +542,15 @@ class LPR(APIpost):
                 self.vehicleListType = vlt.get('#text') or vlt.get('value')
             elif vlt:
                 self.vehicleListType = str(vlt)
+            self.plate_list = _normalize_plate_list(self.vehicleListType)
+            self.direction = _normalize_direction(_xml_text(plate_item.get('vehicleDirect')))
+            self.confidence = _plate_confidence(plate_item.get('PlateConfidence'))
+            car_attr = plate_item.get('carAttr')
+            if isinstance(car_attr, dict):
+                self.vehicle_color = _optional_text(car_attr.get('color'))
+                self.vehicle_type = _optional_text(car_attr.get('type'))
+                self.vehicle_brand = _optional_text(car_attr.get('brand'))
+                self.vehicle_model = _optional_text(car_attr.get('model'))
         # ===============================================================================
 
         self.has_source_image = self.has_target_image = False
@@ -560,16 +659,12 @@ class APIpostV2:
         self.alarm_description = _alarm_description(VT_alarm_types_v2, self.alarm_type)
         _apply_version_fields(self, config)
 
-        # === TIMESTAMP (microseconds) ===
+        # === TIMESTAMP (seconds, milliseconds, or microseconds) ===
         current_time = config.get('currentTime', '')
+        time_text = _xml_text(current_time) if isinstance(current_time, dict) else str(current_time or '')
         try:
-            time_val = int(current_time)
-            if time_val > 1_000_000_000_000_000:  # microseconds
-                time_val = time_val // 1_000_000
-            elif time_val > 1_000_000_000_000:  # milliseconds
-                time_val = time_val // 1000
-            self.time_stamp_formatted = dt.fromtimestamp(time_val)
-        except:
+            self.time_stamp_formatted = _parse_event_time(time_text)
+        except Exception:
             self.time_stamp_formatted = dt.now()
 
         # === IMAGES ===
@@ -738,6 +833,15 @@ class VehicleLPR(APIpostV2):
             NVR groups are user-defined — unlike IPC cameras which use fixed
             whiteList/blackList/temporaryList values.
         car_owner (str): Owner name from the NVR plate database.
+        direction (str or None): ``"approach"``, ``"away"``, or None.
+        confidence (float or None): 0–100 detection confidence, or None.
+        vehicle_color, vehicle_brand, vehicle_type, vehicle_model:
+            Vehicle attributes from ``carAttribute``. Empty values are None.
+            ``get_car_color()`` and the other car getters still return strings.
+        plate_list (str or None): ``whiteList``, ``blackList``,
+            ``temporaryList``, or ``strangerList`` when the NVR group name
+            is one of those lists. A custom group name stays on
+            ``get_plate_group()`` and ``plate_list`` is None.
     """
     def __init__(self, post_body):
         json = xmltodict.parse(post_body)
@@ -752,6 +856,13 @@ class VehicleLPR(APIpostV2):
         self.car_model = ''
         self.group_name = ''
         self.car_owner = ''
+        self.direction = None
+        self.confidence = None
+        self.vehicle_color = None
+        self.vehicle_brand = None
+        self.vehicle_type = None
+        self.vehicle_model = None
+        self.plate_list = None
 
         # Parse licensePlateListInfo
         plate_list = config.get('licensePlateListInfo', {})
@@ -776,12 +887,17 @@ class VehicleLPR(APIpostV2):
                     self.car_color = str(car_attr.get('color', '')).strip()
                     self.car_brand = str(car_attr.get('brand', '')).strip()
                     self.car_model = str(car_attr.get('model', '')).strip()
+                    self.vehicle_type = _optional_text(car_attr.get('carType'))
+                    self.vehicle_color = _optional_text(car_attr.get('color'))
+                    self.vehicle_brand = _optional_text(car_attr.get('brand'))
+                    self.vehicle_model = _optional_text(car_attr.get('model'))
 
                 # Plate database match (NVR user-defined groups)
                 match_info = first_item.get('licensePlateMatchInfo', {})
                 if match_info:
                     self.group_name = str(match_info.get('groupName', '')).strip()
                     self.car_owner = str(match_info.get('carOwner', '')).strip()
+                    self.plate_list = _normalize_plate_list(self.group_name)
 
                 # Plate crop image (inside licensePlateListInfo, not targetListInfo)
                 target_data = first_item.get('targetImageData', {})
@@ -1008,15 +1124,10 @@ class Traject:
 
         # Timestamp
         current_time = config.get('currentTime', {})
-        time_text = current_time.get('#text', str(current_time)) if isinstance(current_time, dict) else str(current_time)
+        time_text = _xml_text(current_time) if isinstance(current_time, dict) else str(current_time or '')
         try:
-            time_val = int(time_text)
-            if time_val > 1_000_000_000_000_000:
-                time_val = time_val // 1_000_000
-            elif time_val > 1_000_000_000_000:
-                time_val = time_val // 1000
-            self.time_stamp_formatted = str(dt.fromtimestamp(time_val))
-        except:
+            self.time_stamp_formatted = str(_parse_event_time(time_text))
+        except Exception:
             self.time_stamp_formatted = str(dt.now())
 
         # Parse traject items

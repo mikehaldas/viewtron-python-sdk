@@ -1,6 +1,7 @@
 """Mocked ViewtronCamera tests for API 2.1 plate groups, errors, and capabilities."""
 
 import warnings
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -427,3 +428,116 @@ class TestGetAllPlates:
         assert [item["plate_number"] for item in found] == ["ABC1234"]
         assert len(seen) == 1
         assert "<groupId><![CDATA[2]]></groupId>" in seen[0]
+
+
+MODIFY_OK = xml_config("", status="success", errorCode="0", errorDesc="No Error")
+
+
+def _plate_row(plate, group_id, end_time, card=""):
+    return (
+        "<item>"
+        f'<licensePlateNumber type="string"><![CDATA[{plate}]]></licensePlateNumber>'
+        f'<groupId type="string"><![CDATA[{group_id}]]></groupId>'
+        '<beginTime type="string"><![CDATA[2026-01-01 00:00:00]]></beginTime>'
+        f'<endTime type="string"><![CDATA[{end_time}]]></endTime>'
+        '<carOwner type="string"><![CDATA[Ada]]></carOwner>'
+        '<telephone type="string"><![CDATA[555-0100]]></telephone>'
+        f'<cardNumber type="string"><![CDATA[{card}]]></cardNumber>'
+        "</item>"
+    )
+
+
+class TestVisitorPasses:
+    def _routes(self, router, query):
+        _list_plate_apis(router)
+        router.post_routes["/GetLicensePlateGroups"] = lambda body: FakeResponse(groups_xml())
+        router.post_routes["/AddLicensePlates"] = lambda body: FakeResponse(ADD_OK)
+        router.post_routes["/ModifyLicensePlate"] = lambda body: FakeResponse(MODIFY_OK)
+        router.post_routes["/GetLicensePlates"] = query
+
+    def test_add_with_details_posts_add_then_modify(self, camera, router):
+        self._routes(router, lambda body: FakeResponse(error_xml(20, "Resources Not Exist")))
+        begin = datetime(2026, 10, 1, 8, 0, 0)
+        end = datetime(2026, 10, 8, 18, 30, 0)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            assert camera.add_plate(
+                "VIS1",
+                group="temporary",
+                owner="Ada",
+                card_number="42",
+                begin_time=begin,
+                end_time=end,
+            ) is True
+        assert caught == []
+        adds = [body for url, body in router.posts if url.endswith("/AddLicensePlates")]
+        mods = [body for url, body in router.posts if url.endswith("/ModifyLicensePlate")]
+        assert len(adds) == 1
+        assert len(mods) == 1
+        assert "<groupId><![CDATA[1]]></groupId>" in adds[0]
+        assert "beginTime" not in adds[0]
+        assert "carOwner" not in adds[0]
+        assert '<carOwner type="string"><![CDATA[Ada]]></carOwner>' in mods[0]
+        assert '<cardNumber type="string"><![CDATA[42]]></cardNumber>' in mods[0]
+        assert '<beginTime type="string"><![CDATA[2026-10-01 08:00:00]]></beginTime>' in mods[0]
+        assert '<endTime type="string"><![CDATA[2026-10-08 18:30:00]]></endTime>' in mods[0]
+        assert "licensePlateType" not in mods[0]
+
+    def test_add_without_extras_does_not_modify(self, camera, router):
+        self._routes(router, lambda body: FakeResponse(error_xml(20, "Resources Not Exist")))
+        assert camera.add_plate("ABC1234", group="allow") is True
+        assert any(url.endswith("/AddLicensePlates") for url, _body in router.posts)
+        assert not any(url.endswith("/ModifyLicensePlate") for url, _body in router.posts)
+        add = [body for url, body in router.posts if url.endswith("/AddLicensePlates")][0]
+        assert "<groupId><![CDATA[2]]></groupId>" in add
+
+    def test_string_times_and_block_alias(self, camera, router):
+        self._routes(router, lambda body: FakeResponse(error_xml(20, "Resources Not Exist")))
+        camera.modify_plate(
+            "BLK1",
+            group="block",
+            telephone="555-0199",
+            begin_time="2026-10-01 00:00:00",
+            end_time="2026-10-02",
+        )
+        body = [posted for url, posted in router.posts if url.endswith("/ModifyLicensePlate")][0]
+        assert "<groupId><![CDATA[3]]></groupId>" in body
+        assert '<telephone type="string"><![CDATA[555-0199]]></telephone>' in body
+        assert '<beginTime type="string"><![CDATA[2026-10-01 00:00:00]]></beginTime>' in body
+        assert '<endTime type="string"><![CDATA[2026-10-02]]></endTime>' in body
+
+    def test_unknown_group_alias_rejected(self, camera, router):
+        self._routes(router, lambda body: FakeResponse(error_xml(20, "Resources Not Exist")))
+        with pytest.raises(ValueError):
+            camera.add_plate("ABC1234", group="strangerList")
+
+    def test_expiring_plates_window(self, camera, router):
+        now = datetime.now().replace(microsecond=0)
+
+        def stamp(delta):
+            return (now + timedelta(days=delta)).strftime("%Y-%m-%d %H:%M:%S")
+
+        rows = "".join([
+            _plate_row("SOON", "1", stamp(1), card="7"),
+            _plate_row("WEEK", "1", stamp(6), card="8"),
+            _plate_row("LATER", "1", stamp(30), card="9"),
+            _plate_row("PAST", "1", stamp(-1), card=""),
+            _plate_row("BLANK", "1", "", card=""),
+            _plate_row("BAD", "1", "not-a-date", card=""),
+        ])
+        body = (
+            '<licensePlates type="list" total="6" count="6">'
+            + rows
+            + "</licensePlates>"
+        )
+
+        def query(posted):
+            if "<groupId><![CDATA[1]]></groupId>" in posted:
+                return FakeResponse(xml_config(body))
+            return FakeResponse(error_xml(20, "Resources Not Exist"))
+
+        self._routes(router, query)
+        found = camera.get_expiring_plates(days=7)
+        assert [item["plate_number"] for item in found] == ["SOON", "WEEK"]
+        assert found[0]["card_number"] == "7"
+        assert found[0]["owner"] == "Ada"

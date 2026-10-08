@@ -47,6 +47,55 @@ requests still use config version 2.1.0.
   is present; otherwise the post is unparsed.
 - **Chunked HTTP bodies** are read by the server. A chunked POST is never
   treated as a keepalive.
+- **LPR event fields.** `direction` (`approach`, `away`, or None; `leave`
+  in the post becomes `away`), `confidence` (0–100; `PlateConfidence
+  count="9900"` is 99.0), `vehicle_color`, `vehicle_brand`,
+  `vehicle_type`, `vehicle_model`, and `plate_list` (`whiteList`,
+  `blackList`, `temporaryList`, `strangerList`, or None). Existing
+  getters such as `get_plate_group()` are unchanged. The same attributes
+  are set on NVR `VehicleLPR` events. NVR `vehicle_*` values come from
+  `carAttribute`. A custom NVR group name stays on `get_plate_group()`
+  and leaves `plate_list` as None unless the name is one of those four
+  lists.
+- **Visitor-pass plate arguments.** `add_plate()` still takes
+  `plate_number`, `group_id`, and `group` in that order. Optional
+  `owner`, `telephone`, `card_number`, `begin_time`, and `end_time`
+  follow. `group` also accepts `allow`, `block`, and `temporary`.
+  `modify_plate()` accepts `card_number`, `begin_time`, and `end_time`
+  after the existing arguments. `get_expiring_plates(days=7)` returns
+  plates from `get_all_plates()` whose end time falls in that window.
+  Plate dicts include `card_number`.
+- **Examples.** `examples/visitor_pass.py` and
+  `examples/gate_direction_filter.py`.
+
+### Fixed
+
+- **IPC event timestamps.** `currentTime` is microseconds on current
+  firmware (observed on a camera running 5.3.1, API 2.1.0), for example
+  `1791408287427999`. Dividing by 1000 once made `fromtimestamp` fail, so
+  `get_time_stamp_formatted()` returned the parse-time clock. The value
+  is now seconds, milliseconds, or microseconds by magnitude, and the
+  camera's event time is returned. The same helper is used for IPC, NVR,
+  and traject posts.
+
+`AddLicensePlates` documents `index`, `licensePlateNumber`, and `groupId`
+only. The camera assigns begin and end times. Owner, telephone, card
+number, and validity are sent with `ModifyLicensePlate` after a successful
+add, and only when those arguments are set. Omitting `begin_time` and
+`end_time` leaves the camera's assigned window in place. This release does
+not send a far-future end date.
+
+`ModifyLicensePlate`'s parameter table lists `carOwner` and `telephone`.
+The command description says it updates validity dates, and the add notes
+say to use `ModifyLicensePlate` for begin and end, but `beginTime`,
+`endTime`, and `cardNumber` are not in that table. `cardNumber` is a
+`GetLicensePlates` response field. Those three are sent with
+`type="string"` when provided. `licensePlateType` is response-only and is
+not sent. The API reference describes `PlateConfidence` as a detection
+score and does not state that `count` is hundredths; `count / 100` follows
+the scale used by these posts (`9900` is 99.00). Documented IPC direction
+values are `approach` and `leave`. These posts also send `away`, which is
+normalized to `away` along with `leave`.
 
 The older `GetVehiclePlate` / `AddVehiclePlate` command family is not
 implemented. Firmware that does not list `GetLicensePlates`, or whose

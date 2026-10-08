@@ -13,6 +13,7 @@
     * [add\_plates](#viewtron.client.ViewtronCamera.add_plates)
     * [get\_plates](#viewtron.client.ViewtronCamera.get_plates)
     * [get\_all\_plates](#viewtron.client.ViewtronCamera.get_all_plates)
+    * [get\_expiring\_plates](#viewtron.client.ViewtronCamera.get_expiring_plates)
     * [modify\_plate](#viewtron.client.ViewtronCamera.modify_plate)
     * [delete\_plate](#viewtron.client.ViewtronCamera.delete_plate)
 
@@ -116,7 +117,8 @@ database management (CRUD), device info, and capability discovery.
 Plate group ids are device-specific. On current firmware (observed on a
 camera running 5.3.1, API 2.1.0) group 1 is ``temporaryList`` and the
 allow list is ``whiteList``, typically group 2. Pass ``group=`` with
-one of ``whiteList``, ``blackList``, or ``temporaryList``. The numeric
+``whiteList`` (``allow``), ``blackList`` (``block``), or
+``temporaryList`` (``temporary``). The numeric
 ``group_id`` argument is still accepted. Omitting both uses ``"1"`` and
 warns once per process. A future major release will default to
 ``whiteList``.
@@ -227,10 +229,37 @@ hard-code those ids; call this method.
 #### add\_plate
 
 ```python
-def add_plate(plate_number, group_id="1", group=None)
+def add_plate(plate_number,
+              group_id="1",
+              group=None,
+              owner=None,
+              telephone=None,
+              card_number=None,
+              begin_time=None,
+              end_time=None)
 ```
 
 Add a plate to the camera database.
+
+Positional arguments stay ``plate_number``, ``group_id``, ``group``.
+Owner, phone, card number, and validity are keyword arguments and
+are optional.
+
+``AddLicensePlates`` documents only ``index``, ``licensePlateNumber``,
+and ``groupId``. The camera assigns begin and end times. When
+``owner``, ``telephone``, ``card_number``, ``begin_time``, or
+``end_time`` is set, this method calls ``ModifyLicensePlate`` after
+a successful add. Leaving the times unset is the default and lets
+the camera assign the validity window. This SDK does not invent a
+far-future end date.
+
+``beginTime`` and ``endTime`` are not in the ``ModifyLicensePlate``
+parameter table. The command description says it updates validity
+dates, and the add notes say to use ``ModifyLicensePlate`` for
+those times, so they are sent with ``type="string"`` when provided.
+``cardNumber`` is a ``GetLicensePlates`` response field and is not
+listed on ``ModifyLicensePlate``; it is sent the same way when
+provided. ``licensePlateType`` is response-only and is not sent.
 
 **Arguments**:
 
@@ -240,9 +269,18 @@ Add a plate to the camera database.
   group 1 is the temporary list. The allow list is
   ``whiteList``, typically group 2. Relying on this default
   warns once.
-- `group` - ``"whiteList"``, ``"blackList"``, or ``"temporaryList"``.
-  The id is resolved with ``get_plate_groups()``. When set,
-  this overrides ``group_id``.
+- `group` - ``"whiteList"`` (``"allow"``), ``"blackList"``
+  (``"block"``), or ``"temporaryList"`` (``"temporary"``).
+  Matching ignores case. The id is resolved with
+  ``get_plate_groups()``. When set, this overrides
+  ``group_id``.
+- `owner` - Owner name (``carOwner``). Omitted when None.
+- `telephone` - Phone number. Omitted when None.
+- `card_number` - Card number (``cardNumber``). Omitted when None.
+- `begin_time` - Validity start as a ``datetime`` or a string.
+  A ``datetime`` is formatted as ``YYYY-MM-DD HH:MM:SS``.
+  Omitted when None.
+- `end_time` - Validity end, same forms as ``begin_time``.
   
 
 **Returns**:
@@ -272,7 +310,8 @@ Add multiple plates to the camera database.
 - `group_id` - Numeric group id. Defaults to ``"1"`` (the temporary
   list on current firmware; see ``add_plate``). Relying on
   this default warns once.
-- `group` - ``"whiteList"``, ``"blackList"``, or ``"temporaryList"``.
+- `group` - ``"whiteList"`` (``"allow"``), ``"blackList"``
+  (``"block"``), or ``"temporaryList"`` (``"temporary"``).
   Overrides ``group_id`` when set.
   
 
@@ -305,15 +344,16 @@ Query one page of the plate database.
   group 1 is the temporary list, so this default does not
   return allow-list plates. The allow list is ``whiteList``,
   typically group 2. Relying on this default warns once.
-- `group` - ``"whiteList"``, ``"blackList"``, or ``"temporaryList"``.
+- `group` - ``"whiteList"`` (``"allow"``), ``"blackList"``
+  (``"block"``), or ``"temporaryList"`` (``"temporary"``).
   Overrides ``group_id`` when set.
   
 
 **Returns**:
 
   List of plate dicts with keys: plate_number, group_id,
-  begin_time, end_time, owner, telephone. An empty database
-  (errorCode 20, Resources Not Exist) returns ``[]``.
+  begin_time, end_time, owner, telephone, card_number. An empty
+  database (errorCode 20, Resources Not Exist) returns ``[]``.
   
 
 **Raises**:
@@ -334,7 +374,8 @@ Return every plate, following ``resultOffset``, ``maxResult``, and ``total``.
 
 **Arguments**:
 
-- `group` - ``"whiteList"``, ``"blackList"``, or ``"temporaryList"``.
+- `group` - ``"whiteList"`` (``"allow"``), ``"blackList"``
+  (``"block"``), or ``"temporaryList"`` (``"temporary"``).
   When omitted together with ``group_id``, every group from
   ``get_plate_groups()`` is read. That path does not use the
   ``"1"`` default and does not warn.
@@ -353,6 +394,31 @@ Return every plate, following ``resultOffset``, ``maxResult``, and ``total``.
 - `ViewtronAPIError` - A page returned an error other than 0 or 20.
 - `UnsupportedFeature` - This firmware has no LicensePlates API.
 
+<a id="viewtron.client.ViewtronCamera.get_expiring_plates"></a>
+
+#### get\_expiring\_plates
+
+```python
+def get_expiring_plates(days=7)
+```
+
+Return plates whose validity ends within the next ``days`` days.
+
+Built on ``get_all_plates()``, so every group is included. A plate
+is included when ``now <= end_time <= now + days``. Missing and
+unparseable end times are skipped, and plates that have already
+expired are not included. Times use ``YYYY-MM-DD HH:MM:SS`` or
+``YYYY-MM-DD``.
+
+**Arguments**:
+
+- `days` - Window length. The default is 7.
+  
+
+**Returns**:
+
+  List of plate dicts from ``get_all_plates()``.
+
 <a id="viewtron.client.ViewtronCamera.modify_plate"></a>
 
 #### modify\_plate
@@ -362,10 +428,18 @@ def modify_plate(plate_number,
                  group_id="1",
                  owner=None,
                  telephone=None,
-                 group=None)
+                 group=None,
+                 card_number=None,
+                 begin_time=None,
+                 end_time=None)
 ```
 
 Update an existing plate's details.
+
+``ModifyLicensePlate`` documents ``carOwner`` and ``telephone``.
+``beginTime``, ``endTime``, and ``cardNumber`` are also sent with
+``type="string"`` when provided. See ``add_plate`` for which of
+those fields the parameter table confirms.
 
 **Arguments**:
 
@@ -375,8 +449,13 @@ Update an existing plate's details.
   this default warns once.
 - `owner` - New owner name (optional)
 - `telephone` - New phone number (optional)
-- `group` - ``"whiteList"``, ``"blackList"``, or ``"temporaryList"``.
+- `group` - ``"whiteList"`` (``"allow"``), ``"blackList"``
+  (``"block"``), or ``"temporaryList"`` (``"temporary"``).
   Overrides ``group_id`` when set.
+- `card_number` - Card number (optional). Appended so existing
+  positional calls stay valid.
+- `begin_time` - New validity start, ``datetime`` or string.
+- `end_time` - New validity end, ``datetime`` or string.
   
 
 **Returns**:
@@ -405,7 +484,8 @@ Delete a plate from the database.
 - `group_id` - Numeric group id. Defaults to ``"1"`` (the temporary
   list on current firmware; see ``add_plate``). Relying on
   this default warns once.
-- `group` - ``"whiteList"``, ``"blackList"``, or ``"temporaryList"``.
+- `group` - ``"whiteList"`` (``"allow"``), ``"blackList"``
+  (``"block"``), or ``"temporaryList"`` (``"temporary"``).
   Overrides ``group_id`` when set.
   
 

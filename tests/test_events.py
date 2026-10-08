@@ -7,6 +7,7 @@ These fixtures have placeholder strings instead of real base64 image data.
 
 import os
 import re
+from datetime import datetime
 
 import pytest
 
@@ -40,6 +41,15 @@ NVR_DIR = os.path.join(FIXTURES_DIR, "nvr-v2")
 
 def load_fixture(subdir, filename):
     path = os.path.join(FIXTURES_DIR, subdir, filename)
+    with open(path, "r") as f:
+        return f.read()
+
+
+LOCAL_FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
+
+
+def load_local(subdir, filename):
+    path = os.path.join(LOCAL_FIXTURES, subdir, filename)
     with open(path, "r") as f:
         return f.read()
 
@@ -717,3 +727,95 @@ class TestDefensiveRouting:
         assert event.get_alarm_type() == "vehice"
         assert event.get_plate_number() == "ABC1234"
         assert event.get_alarm_description() == "License Plate Detection"
+
+
+class TestIpcV21Fixtures:
+    def test_plate_fields_and_microsecond_time(self):
+        event = ViewtronEvent(load_local("ipc-v2.1", "plate-aidrive.xml"))
+        assert isinstance(event, LPR)
+        assert event.category == "lpr"
+        assert event.format == "v1"
+        assert event.config_version == "1.7"
+        assert event.get_alarm_type() == "VEHICE"
+        assert event.get_plate_number() == "AIDRIVE"
+        assert event.get_plate_group() == "blackList"
+        assert event.plate_list == "blackList"
+        assert event.direction == "away"
+        assert event.confidence == 99.0
+        assert event.vehicle_color == "grey"
+        assert event.vehicle_brand == "Tesla"
+        assert event.vehicle_type == "saloon car"
+        assert event.vehicle_model == "Tesla_ModelS"
+        micros = 1791408287427999
+        seconds, rem = divmod(micros, 1_000_000)
+        expected = datetime.fromtimestamp(seconds).replace(microsecond=rem)
+        assert event.time_stamp_formatted == expected
+        assert event.get_time_stamp_formatted() == str(expected)
+        assert "1970" not in event.get_time_stamp_formatted()
+
+    def test_direction_aliases(self):
+        xml = load_local("ipc-v2.1", "plate-aidrive.xml")
+        leave = ViewtronEvent(xml.replace(">away</vehicleDirect>", ">leave</vehicleDirect>"))
+        approach = ViewtronEvent(xml.replace(">away</vehicleDirect>", ">approach</vehicleDirect>"))
+        unknown = ViewtronEvent(xml.replace(">away</vehicleDirect>", ">sideways</vehicleDirect>"))
+        assert leave.direction == "away"
+        assert approach.direction == "approach"
+        assert unknown.direction is None
+
+    def test_older_ipc_plate_has_list_without_direction(self):
+        event = ViewtronEvent(load_fixture("ipc-v1x", "lpr.xml"))
+        assert event.get_plate_group() == "whiteList"
+        assert event.plate_list == "whiteList"
+        assert event.direction is None
+        assert event.confidence is None
+        assert event.vehicle_color is None
+        assert event.vehicle_brand is None
+        assert event.vehicle_type is None
+        assert event.vehicle_model is None
+
+    def test_nvr_vehicle_fields_keep_getters(self):
+        event = ViewtronEvent(load_fixture("nvr-v2", "vehicle-lpr.xml"))
+        assert event.get_car_brand() == "GMC"
+        assert event.get_car_model() == "GMC_SAVANA"
+        assert event.get_car_type() == "mpv"
+        assert event.get_car_color() == "white"
+        assert event.vehicle_brand == "GMC"
+        assert event.vehicle_model == "GMC_SAVANA"
+        assert event.vehicle_type == "mpv"
+        assert event.vehicle_color == "white"
+        assert event.direction is None
+        assert event.confidence is None
+        assert event.plate_list is None
+        assert event.get_plate_group() == ""
+
+    def test_time_unit_by_magnitude(self):
+        from viewtron.events import _parse_event_time
+
+        seconds = 1_700_000_000
+        assert _parse_event_time(str(seconds)) == datetime.fromtimestamp(seconds)
+        millis = seconds * 1000 + 123
+        assert _parse_event_time(str(millis)) == datetime.fromtimestamp(seconds).replace(
+            microsecond=123_000
+        )
+        micros = seconds * 1_000_000 + 427999
+        assert _parse_event_time(str(micros)) == datetime.fromtimestamp(seconds).replace(
+            microsecond=427999
+        )
+        assert _parse_event_time(str(1_000_000_000_000)) == datetime.fromtimestamp(1_000_000_000)
+        assert _parse_event_time(str(1_000_000_000_000_000)) == datetime.fromtimestamp(
+            1_000_000_000
+        )
+
+    def test_keepalive_without_declaration_is_ignored(self):
+        xml = load_local("ipc-v2.1", "keepalive.xml")
+        assert "<?xml" not in xml
+        assert ViewtronEvent(xml) is None
+        event, reason = _classify_post(xml)
+        assert event is None
+        assert reason is None
+
+    @pytest.mark.parametrize("filename", ["alarm-status-on.xml", "alarm-status-off.xml"])
+    def test_alarm_status_reason(self, filename):
+        event, reason = _classify_post(load_local("ipc-v2.1", filename))
+        assert event is None
+        assert reason == "alarmStatus"

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<config version="1.7" xmlns="http://www.ipc.com/ver10">
+<alarmStatusInfo>
+<vehiceAlarm type="boolean" id="1">true</vehiceAlarm>
+</alarmStatusInfo>
+<dataTime><![CDATA[10-07-2026 05:24:48 PM]]></dataTime>
+<deviceInfo>
+<deviceName><![CDATA[Viewtron IPC]]></deviceName>
+<deviceNo.><![CDATA[1]]></deviceNo.>
+<sn><![CDATA[FIXTURESN]]></sn>
+<ipAddress><![CDATA[192.168.1.50]]></ipAddress>
+<macAddress><![CDATA[00:00:00:00:00:00]]></macAddress>
+</deviceInfo>
+</config>
