@@ -1,6 +1,14 @@
 # Changelog
 
-## 1.4.0 — unreleased
+## 1.4.1 — 2026-10-08
+
+Documentation only. No functional code changes.
+
+- README link fixes, including the Home Assistant project URL.
+- Example plates in the README, examples, and docstrings now use `IB36NL`.
+- Product and documentation links added to the README.
+
+## 1.4.0 — 2026-10-08
 
 Prepares the camera client and event parser for API 2.1 cameras. Outgoing
 requests still use config version 2.1.0.
@@ -101,6 +109,8 @@ The older `GetVehiclePlate` / `AddVehiclePlate` command family is not
 implemented. Firmware that does not list `GetLicensePlates`, or whose
 read-only `GetLicensePlates` probe returns Invalid Request, raises
 `UnsupportedFeature`.
+
+Tested with the [Viewtron LPR-IP4 license plate recognition camera](https://www.cctvcamerapros.com/LPR-Camera-p/lpr-ip4.htm). See the [Python SDK guide](https://videos.cctvcamerapros.com/developer/docs/getting-started/python-sdk/) for setup.
 
 ## 1.3.1 — unreleased
 

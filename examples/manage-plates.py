@@ -12,11 +12,12 @@ mike@cctvcamerapros.net
 from viewtron import ViewtronCamera
 
 # ====================== CONFIG ======================
+# Viewtron cameras ship set to DHCP. Use the address your router assigned.
 CAMERA_IP = "192.168.0.20"
 USERNAME = "admin"
 PASSWORD = ""
 
-TEST_PLATE = "TEST123"
+TEST_PLATE = "IB36NL"
 # =====================================================
 
 

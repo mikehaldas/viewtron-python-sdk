@@ -17,7 +17,7 @@ Example:
         print(event.get_plate_number())
         print(event.get_plate_group())
 
-You can find Viewtron IP cameras at https://www.Viewtron.com
+You can find Viewtron IP cameras at https://www.cctvcamerapros.com/viewtron-security-cameras-s/1476.htm
 """
 # Written by Mike Haldas — mike@cctvcamerapros.net
 import xmltodict
@@ -279,7 +279,7 @@ class APIpost:
         """Returns the detected license plate number.
 
         Returns:
-            str: Plate number (e.g., "ABC1234") or "<NO PLATE EXISTS>"
+            str: Plate number (e.g., "IB36NL") or "<NO PLATE EXISTS>"
                 if this is not an LPR event.
         """
         return getattr(self, 'plate_number', '<NO PLATE EXISTS>')
@@ -490,7 +490,7 @@ class LPR(APIpost):
     HTTP POST XML.
 
     Attributes:
-        plate_number (str): Detected plate text (e.g., "ABC1234").
+        plate_number (str): Detected plate text (e.g., "IB36NL").
         vehicleListType (str or None): Raw ``vehicleListType`` text, or
             None when the element is absent.
         direction (str or None): ``"approach"``, ``"away"``, or None.
@@ -507,7 +507,7 @@ class LPR(APIpost):
     Example:
         event = ViewtronEvent(xml_body)
         if event.category == "lpr":
-            print(event.get_plate_number())  # "ABC1234"
+            print(event.get_plate_number())  # "IB36NL"
             print(event.get_plate_group())   # "whiteList"
             print(event.direction, event.confidence, event.plate_list)
     """
@@ -916,7 +916,7 @@ class VehicleLPR(APIpostV2):
         """Returns the detected license plate number.
 
         Returns:
-            str: Plate number (e.g., "ABC1234") or "<NO PLATE>".
+            str: Plate number (e.g., "IB36NL") or "<NO PLATE>".
         """
         return self.plate_number
 
@@ -1276,7 +1276,7 @@ def ViewtronEvent(post_body):
         print(event.get_alarm_description()) # "License Plate Detection"
 
         if event.category == "lpr":
-            print(event.get_plate_number())      # "ABC1234"
+            print(event.get_plate_number())      # "IB36NL"
             print(event.get_plate_group())       # "whiteList"
     """
     event, _reason = _classify_post(post_body)
