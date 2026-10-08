@@ -1,0 +1,8 @@
+<config version="1.7" xmlns="http://www.ipc.com/ver10">
+<messageType>keepalive</messageType>
+<deviceInfo>
+<deviceName><![CDATA[Viewtron IPC]]></deviceName>
+<ip><![CDATA[192.168.1.50]]></ip>
+<mac><![CDATA[00:00:00:00:00:00]]></mac>
+</deviceInfo>
+</config>

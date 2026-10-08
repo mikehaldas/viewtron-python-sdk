@@ -87,6 +87,12 @@ face attributes, etc.).
 - `alarm_description` _str_ - Human-readable description (e.g.,
   "License Plate Detection").
 - `ip_cam` _str_ - Camera device name.
+- `config_version` _str_ - ``version`` attribute from the post's
+  ``<config>`` element, such as ``"1.7"`` or ``"2.1.0"``.
+- `format` _str_ - ``"v1"`` or ``"v2"``, from the major digit of
+  ``config_version``. A direct camera post that uses a 2.x
+  config version is ``"v2"`` even when its body matches the
+  IPC layout.
   
 
 **Notes**:
@@ -121,11 +127,15 @@ Returns supported target types from the camera (person, car, motor).
 def get_time_stamp_formatted()
 ```
 
-Returns event timestamp as a formatted string.
+Returns the camera event time as a string.
+
+``currentTime`` is read as seconds, milliseconds, or microseconds
+by magnitude, so a microsecond post is the camera's event time
+rather than the moment the post was parsed.
 
 **Returns**:
 
-- `str` - Timestamp like "2026-04-09 15:30:45".
+- `str` - Timestamp like "2026-10-07 17:24:47.427999".
 
 <a id="viewtron.events.APIpost.get_time_stamp"></a>
 
@@ -319,8 +329,18 @@ HTTP POST XML.
 **Attributes**:
 
 - `plate_number` _str_ - Detected plate text (e.g., "ABC1234").
-- `vehicleListType` _str or None_ - "whiteList", "blackList",
-  "temporaryList", or None if the plate is not in the database.
+- `vehicleListType` _str or None_ - Raw ``vehicleListType`` text, or
+  None when the element is absent.
+- `direction` _str or None_ - ``"approach"``, ``"away"``, or None.
+  ``leave`` in the post is normalized to ``"away"``.
+- `confidence` _float or None_ - Detection confidence from 0 to 100.
+  ``PlateConfidence count="9900"`` is ``99.0``.
+- `vehicle_color` _str or None_ - ``carAttr/color`` when present.
+- `vehicle_brand` _str or None_ - ``carAttr/brand`` when present.
+- `vehicle_type` _str or None_ - ``carAttr/type`` when present.
+- `vehicle_model` _str or None_ - ``carAttr/model`` when present.
+- `plate_list` _str or None_ - ``whiteList``, ``blackList``,
+  ``temporaryList``, ``strangerList``, or None.
   
 
 **Example**:
@@ -329,6 +349,7 @@ HTTP POST XML.
   if event.category == "lpr":
   print(event.get_plate_number())  # "ABC1234"
   print(event.get_plate_group())   # "whiteList"
+  print(event.direction, event.confidence, event.plate_list)
 
 <a id="viewtron.events.LPR.get_plate_group"></a>
 
@@ -364,6 +385,13 @@ class APIpostV2()
 ```
 
 Base class for NVR v2.0 HTTP Posts.
+
+**Attributes**:
+
+- `config_version` _str_ - ``version`` attribute from the post, such
+  as ``"2.0.0"`` or ``"2.1.0"``.
+- `format` _str_ - ``"v2"`` when ``config_version`` starts with ``2``,
+  otherwise ``"v1"``.
 
 <a id="viewtron.events.APIpostV2.get_source_image_bytes"></a>
 
@@ -417,6 +445,15 @@ Uses a completely different XML structure from other v2.0 alarm types:
   NVR groups are user-defined — unlike IPC cameras which use fixed
   whiteList/blackList/temporaryList values.
 - `car_owner` _str_ - Owner name from the NVR plate database.
+- `direction` _str or None_ - ``"approach"``, ``"away"``, or None.
+- `confidence` _float or None_ - 0–100 detection confidence, or None.
+  vehicle_color, vehicle_brand, vehicle_type, vehicle_model:
+  Vehicle attributes from ``carAttribute``. Empty values are None.
+  ``get_car_color()`` and the other car getters still return strings.
+- `plate_list` _str or None_ - ``whiteList``, ``blackList``,
+  ``temporaryList``, or ``strangerList`` when the NVR group name
+  is one of those lists. A custom group name stays on
+  ``get_plate_group()`` and ``plate_list`` is None.
 
 <a id="viewtron.events.VehicleLPR.get_plate_number"></a>
 
@@ -626,6 +663,8 @@ bounding box, velocity, and direction.
 - `device_name` - Camera name from the post
 - `mac` - Camera MAC address
 - `timestamp` - Event timestamp
+- `config_version` - ``version`` attribute from the post
+- `format` - ``"v1"`` or ``"v2"``
 
 <a id="viewtron.events.ViewtronEvent"></a>
 
@@ -663,6 +702,11 @@ correct parsed event object.
   - ``"traject"`` — Traject. High-volume tracking data with target
   IDs, types, and bounding boxes.
   - None — Keepalives, alarm status messages, unrecognized events.
+  
+  Every returned event has ``config_version`` (the post's config
+  ``version`` attribute, for example ``"2.1.0"``) and ``format``
+  (``"v1"`` or ``"v2"``). ``ViewtronServer`` reports posts that stay
+  None through its ``on_unparsed`` callback.
   
 
 **Example**:
