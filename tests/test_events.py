@@ -731,30 +731,61 @@ class TestDefensiveRouting:
 
 class TestIpcV21Fixtures:
     def test_plate_fields_and_microsecond_time(self):
-        event = ViewtronEvent(load_local("ipc-v2.1", "plate-aidrive.xml"))
+        event = ViewtronEvent(load_local("ipc-v2.1", "plate-ib36nl.xml"))
         assert isinstance(event, LPR)
         assert event.category == "lpr"
         assert event.format == "v1"
         assert event.config_version == "1.7"
         assert event.get_alarm_type() == "VEHICE"
-        assert event.get_plate_number() == "AIDRIVE"
-        assert event.get_plate_group() == "blackList"
-        assert event.plate_list == "blackList"
-        assert event.direction == "away"
+        assert event.get_plate_number() == "IB36NL"
+        assert event.get_plate_group() == "whiteList"
+        assert event.plate_list == "whiteList"
+        assert event.direction == "approach"
         assert event.confidence == 99.0
-        assert event.vehicle_color == "grey"
-        assert event.vehicle_brand == "Tesla"
+        assert event.vehicle_color == "white"
+        assert event.vehicle_brand == "TestBrand"
         assert event.vehicle_type == "saloon car"
-        assert event.vehicle_model == "Tesla_ModelS"
-        micros = 1791408287427999
+        assert event.vehicle_model == "TestModel"
+        micros = 1791471201542438
         seconds, rem = divmod(micros, 1_000_000)
         expected = datetime.fromtimestamp(seconds).replace(microsecond=rem)
         assert event.time_stamp_formatted == expected
         assert event.get_time_stamp_formatted() == str(expected)
         assert "1970" not in event.get_time_stamp_formatted()
 
+    def test_blacklist_away_plate(self):
+        event = ViewtronEvent(load_local("ipc-v2.1", "plate-blacklist-away.xml"))
+        assert isinstance(event, LPR)
+        assert event.category == "lpr"
+        assert event.format == "v1"
+        assert event.config_version == "1.7"
+        assert event.get_alarm_type() == "VEHICE"
+        assert event.get_plate_number() == "TEST456"
+        assert event.get_plate_group() == "blackList"
+        assert event.plate_list == "blackList"
+        assert event.direction == "away"
+        assert event.confidence == 99.0
+        assert event.vehicle_color == "white"
+        assert event.vehicle_brand == "TestBrand"
+        assert event.vehicle_type == "saloon car"
+        assert event.vehicle_model == "TestModel"
+
+    def test_unlisted_approach_has_no_list_type(self):
+        event = ViewtronEvent(load_local("ipc-v2.1", "plate-unlisted-approach.xml"))
+        assert isinstance(event, LPR)
+        assert event.get_plate_number() == "TEST123"
+        assert event.vehicleListType is None
+        assert event.get_plate_group() == ""
+        assert event.plate_list is None
+        assert event.direction == "approach"
+        assert event.confidence == 99.0
+        assert event.vehicle_color == "white"
+        assert event.vehicle_brand == "TestBrand"
+        assert event.vehicle_type == "saloon car"
+        assert event.vehicle_model == "TestModel"
+
     def test_direction_aliases(self):
-        xml = load_local("ipc-v2.1", "plate-aidrive.xml")
+        xml = load_local("ipc-v2.1", "plate-blacklist-away.xml")
         leave = ViewtronEvent(xml.replace(">away</vehicleDirect>", ">leave</vehicleDirect>"))
         approach = ViewtronEvent(xml.replace(">away</vehicleDirect>", ">approach</vehicleDirect>"))
         unknown = ViewtronEvent(xml.replace(">away</vehicleDirect>", ">sideways</vehicleDirect>"))
