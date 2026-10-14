@@ -148,6 +148,22 @@ with ViewtronCamera("192.168.0.20", "admin", "password") as cam:
 - [Viewtron IP cameras](https://www.cctvcamerapros.com/viewtron-IP-cameras-s/1474.htm) and [IP camera NVRs](https://www.cctvcamerapros.com/IP-Camera-NVRs-s/1472.htm)
 - [AI security cameras](https://www.cctvcamerapros.com/AI-security-cameras-s/1512.htm)
 
+## Privacy scan
+
+Every pull request runs [`.github/workflows/privacy-scan.yml`](.github/workflows/privacy-scan.yml) for all branches. The job runs [`.github/scripts/privacy_scan.py`](.github/scripts/privacy_scan.py) with the Python 3 standard library.
+
+The scan reads added lines from `git diff base...head`, the pull request title and body from the GitHub event payload, and commit messages from `git log`. A failure lists `file:line` and the rule name. A confidential-term hit is shown as `[confidential term]`; the matched text is not logged.
+
+1. **Confidential terms.** The `PRIVACY_SCAN_TERMS` secret is one SHA-256 hex digest per line, the hash of a lowercase term. The scanner hashes lowercase word n-grams of one to three words, including the form with spaces, hyphens, and underscores removed. Do not commit plaintext terms. If the secret is unset, as on a fork pull request, the check warns and skips only this rule. Build the secret locally with [`scripts/hash_terms.py`](scripts/hash_terms.py), which reads one term per line on stdin and prints digests:
+
+   ```bash
+   python scripts/hash_terms.py < terms.txt
+   ```
+
+2. **Private addresses.** Dotted addresses in 10/8, 172.16/12, 192.168/16, and 169.254/16. Documented examples listed in [`.github/privacy-scan-allow.txt`](.github/privacy-scan-allow.txt) are ignored. That file starts with no entries.
+
+3. **License plates.** A token of 2 to 8 uppercase letters and digits that contains a letter and a digit, or an all-letter token of that length within 48 characters of the whole words plate, lpr, license, or anpr. Underscores join an identifier, so a name such as get_plate_number is not context. `PRIVACY_SCAN_PLATES` uses the same digest format; a missing secret skips only that digest check. Entries in [`.github/privacy-scan-plates-approved.txt`](.github/privacy-scan-plates-approved.txt) pass. Mike must approve each entry. That list starts empty.
+
 ## Author
 
 Mike Haldas — [CCTV Camera Pros](https://www.cctvcamerapros.com)

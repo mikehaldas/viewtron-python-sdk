@@ -1,0 +1,3 @@
+# Approved plates. Mike must approve each entry.
+# One plate per line. This list starts empty.
+# Spaces, hyphens, and underscores are ignored when comparing.
