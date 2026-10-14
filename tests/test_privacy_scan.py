@@ -216,59 +216,71 @@ class TestAddresses:
 
 
 class TestPlates:
-    def test_letter_and_digit_anywhere(self):
-        token = chunk("AB", "12")
-        assert rules_for("camera " + token) == [scan.RULE_PLATE]
-        assert rules_for(chunk("ABCD", "1234")) == [scan.RULE_PLATE]
-
-    def test_length_bounds(self):
-        assert rules_for(chunk("A", "1")) == [scan.RULE_PLATE]
-        assert rules_for(chunk("A")) == []
-        assert rules_for(chunk("ABCD", "12345")) == []
-        assert rules_for(chunk("12", "345")) == []
-
-    def test_lowercase_is_not_a_heuristic_hit(self):
-        assert rules_for("camera " + chunk("ab", "12")) == []
-
-    def test_all_letters_need_a_nearby_keyword(self):
-        token = chunk("QQ")
+    def test_quoted_literal_needs_context_and_shape(self):
+        four = chunk("AB", "12")
+        eight = chunk("ABCD", "1234")
+        nine = chunk("ABCD", "12345")
+        short = chunk("A", "1")
         keyword = "plate"
-        assert rules_for(keyword + " " + token) == [scan.RULE_PLATE]
-        assert rules_for(token + " unit " + keyword) == [scan.RULE_PLATE]
-        gap = " " * (scan.NEAR_CHARS + 20)
-        assert rules_for(keyword + gap + token) == []
-        assert rules_for(token) == []
+        assert rules_for(keyword + " " + repr(four)) == [scan.RULE_PLATE]
+        assert rules_for(keyword + " " + repr(eight)) == [scan.RULE_PLATE]
+        assert rules_for(keyword + " " + repr(nine)) == []
+        assert rules_for(keyword + " " + repr(short)) == []
+        assert rules_for(keyword + " " + four) == []
+        assert rules_for(repr(four)) == []
+        assert rules_for(keyword + " " + repr(chunk("12", "345"))) == []
+        assert rules_for(keyword + " " + repr(chunk("ab", "12"))) == []
+        assert rules_for(keyword + " " + repr(chunk("ABCD"))) == []
 
-    def test_context_words_and_plurals(self):
-        token = chunk("QQ")
-        for keyword in (
-            "plate",
-            "plates",
-            "lpr",
-            "license",
-            "licenses",
-            "anpr",
-            "Plate",
-            "LICENSE",
-            "LPR",
-            "ANPR",
-        ):
-            assert rules_for(" ".join((keyword, token))) == [scan.RULE_PLATE]
+    def test_context_is_plate_lpr_anpr_or_license_plate(self):
+        token = repr(chunk("AB", "12", "CD"))
+        for phrase in ("plate", "plates", "lpr", "anpr", "license plate", "LPR", "ANPR"):
+            assert rules_for(phrase + " " + token) == [scan.RULE_PLATE]
+        assert rules_for("license " + token) == []
+        assert rules_for("template " + token) == []
+        assert rules_for("The MIT License") == []
+        assert rules_for("License :: OSI Approved :: MIT License") == []
 
-    def test_identifier_and_template_are_not_context(self):
-        token = chunk("QQ")
-        assert rules_for("get_plate_number() == " + repr(token)) == []
-        assert rules_for(" ".join(("template", token))) == []
+    def test_method_call_with_quoted_literal(self):
+        token = repr(chunk("AB", "12", "CD"))
+        text = "event.get_plate_number() == " + token
+        assert rules_for(text) == [scan.RULE_PLATE]
 
-    def test_context_words_themselves_are_not_hits(self):
-        assert rules_for("license plate LPR ANPR") == []
+    def test_xml_and_key_values(self):
+        value = chunk("AB", "12", "CD")
+        for tag in ("plateNumber", "plate", "carPlate", "licensePlateNumber"):
+            assert rules_for("<" + tag + ">" + value + "</" + tag + ">") == [scan.RULE_PLATE]
+        wrapped = "<plateNumber><![CDATA[" + value + "]]></plateNumber>"
+        assert rules_for(wrapped) == [scan.RULE_PLATE]
+        assert rules_for("<plateNumber></plateNumber>") == []
+        assert rules_for("<plateColor>" + value + "</plateColor>") == []
+        assert rules_for("plate_number=" + repr(value)) == [scan.RULE_PLATE]
+        assert rules_for('"plateNumber": ' + repr(value)) == [scan.RULE_PLATE]
+        assert rules_for("license_plate=" + repr(value)) == [scan.RULE_PLATE]
+        assert rules_for('{"plate": ' + repr(value) + "}") == [scan.RULE_PLATE]
+
+    def test_tech_tokens_models_hex_and_uuid_are_ignored(self):
+        keyword = "plate"
+        for token in ("H264", "H265", "IPV4", "RFC1918", "HTTP2", "V1", "V2", "MP4"):
+            assert rules_for(keyword + " " + repr(token)) == []
+            assert rules_for("<plateNumber>" + token + "</plateNumber>") == []
+        model = "LPR" + "-" + "IP4"
+        assert rules_for("<plateNumber>" + model + "</plateNumber>") == []
+        ident = "12345678-1234-5678-1234-123456789abc"
+        assert rules_for("<plateNumber>" + ident + "</plateNumber>") == []
+        prefixed = "0x" + "DEADBEEF"
+        assert rules_for("<plateNumber>" + prefixed + "</plateNumber>") == []
+        long_hex = "ABCDEF1234567890"
+        assert rules_for("<plateNumber>" + long_hex + "</plateNumber>") == []
+        kept = chunk("AB", "C1", "23")
+        assert rules_for(keyword + " " + repr(kept)) == [scan.RULE_PLATE]
 
     def test_approved_spelling_passes(self):
         token = chunk("AB", "12")
         approved = {scan.normalize_plate(chunk("ab", "-", "12"))}
         ctx = scan.ScanContext(set(), set(), [], approved)
-        assert rules_for(token, ctx) == []
-        assert rules_for("id " + chunk("AB", "-", "12"), ctx) == []
+        assert rules_for("plate " + repr(token), ctx) == []
+        assert rules_for("<plateNumber>" + token + "</plateNumber>", ctx) == []
 
     def test_hashed_plate_matches_and_does_not_double_count(self):
         token = chunk("AB", "12")
@@ -279,6 +291,7 @@ class TestPlates:
         assert rules_for("saw " + lowered, ctx) == [scan.RULE_PLATE]
         hyphenated = "id " + chunk("AB", "-", "12")
         assert rules_for(hyphenated, ctx) == [scan.RULE_PLATE]
+        assert rules_for("plate " + repr(token), ctx) == [scan.RULE_PLATE]
 
     def test_approved_plate_suppresses_hash_hit(self):
         token = chunk("AB", "12")
@@ -292,7 +305,8 @@ class TestPlates:
 
     def test_missing_plate_secret_still_runs_heuristic(self):
         token = chunk("CD", "34")
-        assert rules_for(token) == [scan.RULE_PLATE]
+        assert rules_for("plate " + repr(token)) == [scan.RULE_PLATE]
+        assert rules_for(token) == []
 
 
 class TestDiffAndEvents:
@@ -353,16 +367,17 @@ class TestDiffAndEvents:
 
     def test_event_title_body_and_commits(self):
         marker = chunk("CD", "34")
+        message = "saw plate " + repr(marker)
         event = {
             "pull_request": {"title": "hello", "body": "line one\nline two"},
-            "commits": [{"id": "abc1234ffff", "message": "saw " + marker + "\nmore"}],
+            "commits": [{"id": "abc1234ffff", "message": message + "\nmore"}],
         }
         rows = scan.iter_event(event)
         assert rows[0] == ("pr-title", 1, "hello")
         assert rows[1] == ("pr-body", 1, "line one")
         assert rows[2] == ("pr-body", 2, "line two")
         assert rows[3][0] == "commit/abc1234"
-        assert rows[3][2] == "saw " + marker
+        assert rows[3][2] == message
         assert rules_for(rows[3][2]) == [scan.RULE_PLATE]
 
 
@@ -405,7 +420,7 @@ class TestCommand:
         (repo / "cam.txt").write_text("keep\n" + address + "\n", encoding="utf-8")
         git(repo, "add", "cam.txt")
         marker = chunk("IB", "36", "NL")
-        git(repo, "commit", "-m", "record " + marker)
+        git(repo, "commit", "-m", "record plate " + repr(marker))
         head = git(repo, "rev-parse", "HEAD").strip()
         event = {
             "pull_request": {

@@ -31,7 +31,6 @@ RULE_IP = "private-ip"
 _plate_rule = "-".join(("license", "plate"))
 RULE_PLATE = _plate_rule
 CONFIDENTIAL_MASK = "[confidential term]"
-NEAR_CHARS = 48
 
 ALLOW_FILENAME = "privacy-scan-allow.txt"
 _approved_name = "privacy-scan-plates-approved.txt"
@@ -85,42 +84,44 @@ def warn(message: str) -> None:
     print(f"::warning::{message}", file=sys.stderr)
 
 
-def _span(first: str, last: str) -> str:
-    return "".join(chr(code) for code in range(ord(first), ord(last) + 1))
-
-
-def _compile_patterns() -> tuple[re.Pattern[str], re.Pattern[str], re.Pattern[str]]:
+def _compile_patterns() -> tuple[re.Pattern[str], re.Pattern[str], re.Pattern[str], re.Pattern[str]]:
     """Build matchers without embedding private addresses or plate samples."""
-    upper = _span("A", "Z")
-    lower = _span("a", "z")
-    digits = _span("0", "9")
-    any_alnum = upper + lower + digits
-    plate_chars = upper + digits
     octet = r"(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])"
     ipv4 = re.compile(rf"(?<![0-9.])(?:{octet}\.){{3}}{octet}(?![0-9.])")
-    plate = re.compile(
-        rf"(?<![{any_alnum}])[{plate_chars}]{{2,8}}(?![{any_alnum}])"
+    # "plate" may be followed by an uppercase letter (plateNumber) but not by
+    # a lowercase letter, so "template" is not a mention.
+    mention = re.compile(
+        r"(?i)(?<![A-Za-z])plates?(?![a-z])"
+        r"|(?<![A-Za-z])(?:lpr|anpr)(?![A-Za-z])"
+        r"|(?<![A-Za-z])licen[cs]es?[\s\-_]+plates?(?![A-Za-z])"
     )
-    # Underscore is an identifier character so code names are not context.
-    context = re.compile(
-        rf"(?<![{any_alnum}_])(?:plate|lpr|license|anpr)s?(?![{any_alnum}_])",
-        re.IGNORECASE,
+    quoted = re.compile(r"""['"]([A-Z0-9]{4,8})['"]""")
+    tags = "licensePlateNumber|plateNumber|carPlate|licensePlate|plate"
+    xml_value = re.compile(
+        rf"(?i)<(?P<tag>{tags})\b[^>]*>\s*"
+        rf"(?:<!\[CDATA\[(?P<cdata>.*?)\]\]>|(?P<text>[^<]*))"
     )
-    return ipv4, plate, context
+    return ipv4, mention, quoted, xml_value
 
 
-_quad_re, _PLATE_RE, _CONTEXT_RE = _compile_patterns()
+_quad_re, _MENTION_RE, _QUOTED_RE, _XML_VALUE_RE = _compile_patterns()
 
-_CONTEXT_WORDS = frozenset(
+# Names accepted as a JSON key or a Python keyword argument.
+_FIELD_KEYS = ("license_plate", "plate_number", "plateNumber", "plate")
+
+_TECH_TOKENS = frozenset(
     {
-        "plate",
-        "plates",
-        "lpr",
-        "lprs",
-        "license",
-        "licenses",
-        "anpr",
-        "anprs",
+        "V1",
+        "V2",
+        "IPV4",
+        "IPV6",
+        "H264",
+        "H265",
+        "MP4",
+        "MP3",
+        "RFC1918",
+        "HTTP2",
+        "HTTP1",
     }
 )
 
@@ -260,22 +261,112 @@ def find_private_ips(text: str, allow_nets: list[ipaddress.IPv4Network]) -> list
     return found
 
 
-def heuristic_plates(text: str) -> list[str]:
+def _line_mentions_plate(text: str) -> bool:
+    return _MENTION_RE.search(text) is not None
+
+
+def _is_tech_token(value: str) -> bool:
+    compact = normalize_plate(value)
+    if compact in _TECH_TOKENS:
+        return True
+    if re.fullmatch(r"V\d{1,2}", compact):
+        return True
+    if re.fullmatch(r"H26[45]", compact):
+        return True
+    if re.fullmatch(r"RFC\d+", compact):
+        return True
+    if re.fullmatch(r"HTTP\d+", compact):
+        return True
+    if re.fullmatch(r"(?:MP[34]|IPV[46])", compact):
+        return True
+    raw = value.strip()
+    if re.fullmatch(r"(?:IP|LPR|NVR)-[A-Z0-9].*", raw, re.IGNORECASE):
+        return True
+    return False
+
+
+def _is_hex_or_uuid(value: str) -> bool:
+    text = value.strip()
+    if re.fullmatch(r"0[xX][0-9A-Fa-f]+", text):
+        return True
+    uuid = (
+        r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-"
+        r"[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"
+    )
+    if re.fullmatch(r"\{?" + uuid + r"\}?", text):
+        return True
+    # Longer than a plate token, so this does not drop short plate text
+    # that happens to use the letters A through F.
+    if re.fullmatch(r"[0-9A-Fa-f]{9,}", text):
+        return True
+    return False
+
+
+def _excluded_plate(value: str) -> bool:
+    return _is_tech_token(value) or _is_hex_or_uuid(value)
+
+
+def _usable_field_value(value: str) -> str | None:
+    raw = value.strip()
+    if not raw or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 \-_]*", raw):
+        return None
+    norm = normalize_plate(raw)
+    if not (2 <= len(norm) <= 8) or not any(char.isalpha() for char in norm):
+        return None
+    if _excluded_plate(raw):
+        return None
+    return norm
+
+
+def _field_key_values(text: str) -> list[str]:
+    keys = "|".join(_FIELD_KEYS)
+    pattern = re.compile(
+        rf"(?i)(?<![A-Za-z0-9_])(?P<qkey>['\"]?)(?P<key>{keys})(?P=qkey)"
+        rf"\s*(?:(?<![!<>=])=(?!=)|:(?!:))\s*"
+        rf"(?P<qval>['\"])(?P<value>[^'\"]*)(?P=qval)"
+    )
     found: list[str] = []
-    for match in _PLATE_RE.finditer(text):
-        token = match.group(0)
-        if token.lower() in _CONTEXT_WORDS:
-            continue
-        has_letter = any(char.isalpha() for char in token)
-        has_digit = any(char.isdigit() for char in token)
-        if has_letter and has_digit:
-            found.append(token)
-            continue
-        if has_letter and not has_digit:
-            window = text[max(0, match.start() - NEAR_CHARS) : match.end() + NEAR_CHARS]
-            if _CONTEXT_RE.search(window):
-                found.append(token)
+    for match in pattern.finditer(text):
+        usable = _usable_field_value(match.group("value"))
+        if usable:
+            found.append(usable)
     return found
+
+
+def _xml_field_values(text: str) -> list[str]:
+    found: list[str] = []
+    for match in _XML_VALUE_RE.finditer(text):
+        raw = match.group("cdata")
+        if raw is None:
+            raw = match.group("text") or ""
+        usable = _usable_field_value(raw)
+        if usable:
+            found.append(usable)
+    return found
+
+
+def _quoted_plate_literals(text: str) -> list[str]:
+    if not _line_mentions_plate(text):
+        return []
+    found: list[str] = []
+    for match in _QUOTED_RE.finditer(text):
+        token = match.group(1)
+        if not any(char.isalpha() for char in token):
+            continue
+        if not any(char.isdigit() for char in token):
+            continue
+        if _excluded_plate(token):
+            continue
+        before = text[max(0, match.start() - 4) : match.start()]
+        if re.search(r"(?:IP|LPR|NVR)-$", before, re.IGNORECASE):
+            continue
+        found.append(token)
+    return found
+
+
+def heuristic_plates(text: str) -> list[str]:
+    """Plate text from a plate field, or a quoted literal in plate context."""
+    return _xml_field_values(text) + _field_key_values(text) + _quoted_plate_literals(text)
 
 
 def scan_line(path: str, lineno: int, text: str, ctx: ScanContext) -> list[Finding]:
