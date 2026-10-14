@@ -482,13 +482,15 @@ class TestCommand:
 
 
 class TestRepositoryFiles:
-    def test_lists_start_empty(self):
+    def test_only_the_approved_fake_plate_is_listed(self):
         approved_name = ".github/privacy-scan-plates-approved.txt"
         allow = ROOT / ".github" / "privacy-scan-allow.txt"
         approved = ROOT / approved_name
         assert scan.load_allow_list(allow) == []
-        assert scan.load_approved_plates(approved) == set()
-        assert "Mike must approve each entry" in approved.read_text(encoding="utf-8")
+        assert scan.load_approved_plates(approved) == {"IB36NL"}
+        text = approved.read_text(encoding="utf-8")
+        assert "Mike must approve each entry" in text
+        assert "approved by Mike 2026-10-14" in text
 
     def test_workflow_covers_every_branch(self):
         text = (ROOT / ".github" / "workflows" / "privacy-scan.yml").read_text(
